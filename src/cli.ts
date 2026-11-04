@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -64,12 +64,18 @@ ${cfg.tunnel === "cf-quick" ? "\n注意：临时隧道每次启动地址都会�
 
 // 自我更新后重启。新版本不再弹浏览器（页面已经开着，会自己重连）。
 function restartInto(exe: string, stops: (() => void)[]) {
+  // Windows 先把启动器安排好（失败就抛错，本进程照常运行），再关自己的服务
+  if (process.platform === "win32") scheduleWindowsRestart(exe);
   stops.forEach((s) => s());
   runtime.closers.forEach((c) => c());
   stopSampler();
   console.log("\n已更新，正在启动新版本…\n");
+  if (process.platform === "win32") {
+    console.log("新版本会在新窗口里启动，这个窗口马上关闭。");
+    setTimeout(() => process.exit(0), 500);
+    return;
+  }
   const env = { ...process.env, LOCALVPS_OPEN_PANEL: "false" };
-  if (process.platform === "win32") return restartWindows(exe, env);
 
   // macOS：同一个终端里起新版本，本进程只转发信号、等它退出；20 秒内异常退出就换回旧文件
   let child: ReturnType<typeof spawn>;
@@ -90,14 +96,15 @@ function restartInto(exe: string, stops: (() => void)[]) {
 }
 
 /**
- * Windows：本进程直接拉起新版本，新进程会继承本进程的端口句柄，端口永远放不掉。
- * 改成交给一个独立的 PowerShell 脚本：等本进程完全退出，再用 Start-Process 起新版本（不继承句柄，开在新窗口），
- * 新版本 20 秒内异常退出就换回旧文件再起。
+ * Windows：Bun 把本进程和它起的所有子进程放在同一个作业对象里，本进程一退出它们全被结束，
+ * 而且直接拉起的子进程还会继承端口句柄。所以让 WMI 去创建启动器：它的父进程是系统的 WMI 服务，
+ * 和本进程毫无关系。启动器等本进程退出，用 Start-Process 起新版本，20 秒内异常退出就换回旧文件再起。
  */
-function restartWindows(exe: string, env: NodeJS.ProcessEnv) {
+function scheduleWindowsRestart(exe: string) {
   const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
   const dir = path.dirname(exe);
   const script = [
+    `$env:LOCALVPS_OPEN_PANEL = 'false'`, // 页面已经开着，会自己重连
     `Wait-Process -Id ${process.pid} -Timeout 30 -ErrorAction SilentlyContinue`,
     `Start-Sleep -Seconds 1`,
     `$p = Start-Process -FilePath ${q(exe)} -WorkingDirectory ${q(dir)} -PassThru`,
@@ -105,21 +112,20 @@ function restartWindows(exe: string, env: NodeJS.ProcessEnv) {
     `if ($p.HasExited -and $p.ExitCode -ne 0 -and (Test-Path ${q(exe + ".old")})) {`,
     `  Move-Item -Force ${q(exe)} ${q(exe + ".failed")}`,
     `  Move-Item -Force ${q(exe + ".old")} ${q(exe)}`,
-    `  Add-Content -Encoding UTF8 (Join-Path $env:USERPROFILE '.localvps\error.log') "$(Get-Date -Format o) 新版本启动后马上退出了（退出码 $($p.ExitCode)），已换回旧版本"`,
+    `  Add-Content -Encoding UTF8 (Join-Path $env:USERPROFILE '.localvps\\error.log') "$(Get-Date -Format o) 新版本启动后马上退出了（退出码 $($p.ExitCode)），已换回旧版本"`,
     `  Start-Process -FilePath ${q(exe)} -WorkingDirectory ${q(dir)}`,
     `}`,
   ].join("\r\n");
   const file = path.join(os.tmpdir(), `localvps-restart-${process.pid}.ps1`);
   fs.writeFileSync(file, "\ufeff" + script);
-  // 第一层只负责再起一个干净的 PowerShell 跑脚本，然后马上退出，不长时间攥着继承来的句柄
-  spawn(
+  const cmdline = `powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${file}"`;
+  const r = spawnSync(
     "powershell.exe",
-    ["-NoProfile", "-WindowStyle", "Hidden", "-Command",
-      `Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',${q(`"${file}"`)}`],
-    { detached: true, stdio: "ignore", windowsHide: true, env },
-  ).unref();
-  console.log("新版本会在新窗口里启动，这个窗口马上关闭。");
-  setTimeout(() => process.exit(0), 500);
+    ["-NoProfile", "-NonInteractive", "-Command",
+      `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = ${q(cmdline)} }; exit $r.ReturnValue`],
+    { windowsHide: true, timeout: 30_000 },
+  );
+  if (r.status !== 0) throw new Error(`新版本已经装好，但没能自动重启（WMI 返回 ${r.status ?? r.error?.message}），手动重启 localvps 就会用上新版本`);
 }
 
 async function main() {
