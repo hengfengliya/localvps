@@ -1,0 +1,25 @@
+{
+  "name": "localvps-intro",
+  "version": "1.0.0",
+  "description": "localvps 产品介绍视频（Remotion）",
+  "private": true,
+  "license": "MIT",
+  "engines": { "node": "^20.19.0 || ^22.13.0 || >=24" },
+  "dependencies": {
+    "@remotion/cli": "4.0.539",
+    "@remotion/media": "4.0.539",
+    "@remotion/paths": "4.0.539",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "playwright": "1.64.1",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "dev": "remotion studio",
+    "render": "./render.sh"
+  }
+}

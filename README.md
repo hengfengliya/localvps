@@ -18,7 +18,9 @@ Claude Code、Codex 不管在哪儿跑，都能远程在这台电脑上读写文
 ![Platform](https://img.shields.io/badge/macOS%20%C2%B7%20Windows-0b0b0b)
 ![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-0b0b0b)
 
-<img src="docs/images/overview.png" alt="localvps 控制台" width="860">
+<a href="https://github.com/hengfengliya/localvps/releases/download/v0.1.0/localvps-intro.mp4"><img src="docs/images/demo.gif" alt="localvps 演示" width="860"></a>
+
+<sub>点图看 43 秒完整介绍视频（有声）</sub>
 
 </div>
 
@@ -230,6 +232,8 @@ npm install
 npm run dev          # 编译并启动
 npm run build:bin    # 用 Bun 编出三个平台的单文件版到 release/
 ```
+
+介绍视频的源码在 `video/`（Remotion，配乐是脚本原创合成的），`./video/render.sh` 一条命令出片。
 
 代码不多：`src/server.ts` 是 MCP 服务和远程查看，`src/tools.ts` 是工具和权限，`src/tunnel.ts` 管 cloudflared，`src/panel.*` 是控制台。
 

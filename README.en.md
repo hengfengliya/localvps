@@ -18,7 +18,9 @@ Claude Code and Codex can then read, write and run commands on this machine — 
 ![Platform](https://img.shields.io/badge/macOS%20%C2%B7%20Windows-0b0b0b)
 ![MCP](https://img.shields.io/badge/MCP-Streamable%20HTTP-0b0b0b)
 
-<img src="docs/images/overview.png" alt="localvps dashboard" width="860">
+<a href="https://github.com/hengfengliya/localvps/releases/download/v0.1.0/localvps-intro.mp4"><img src="docs/images/demo.gif" alt="localvps demo" width="860"></a>
+
+<sub>Click for the 43-second intro video (with sound)</sub>
 
 </div>
 
@@ -232,6 +234,8 @@ npm install
 npm run dev          # build and start
 npm run build:bin    # build standalone binaries for all three platforms into release/ (needs Bun)
 ```
+
+The intro video source lives in `video/` (Remotion, with an originally synthesized soundtrack); `./video/render.sh` renders it in one command.
 
 The codebase is small: `src/server.ts` is the MCP server and remote view, `src/tools.ts` the tools and permissions, `src/tunnel.ts` manages cloudflared, `src/panel.*` is the dashboard.
 

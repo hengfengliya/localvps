@@ -1,0 +1,25 @@
+{
+  "_说明": "全片时间轴，单位是拍（120 BPM，30fps 下一拍 15 帧，两拍一秒）。配乐（audio/make_music.py）、音效和画面（src/）都读这一份。",
+  "bpm": 120,
+  "fps": 30,
+  "totalBeats": 86,
+  "music": { "intro": [0, 8], "build": [8, 20], "groove": [20, 56], "breakdown": [56, 62], "riser": [62, 64], "groove2": [64, 72], "outro": [72, 86] },
+  "melody": [[36, 56], [64, 72]],
+  "rolls": [[18, 20], [62, 64], [70, 72]],
+  "risers": [[6, 8], [18, 20], [62, 64]],
+  "scenes": { "hook": [0, 8], "install": [8, 20], "overview": [20, 30], "connect": [30, 38], "ai": [38, 56], "perms": [56, 64], "remote": [64, 72], "end": [72, 86] },
+  "captions": [
+    [21, 29.4, "运行即是一台服务器 · 自带隧道，不要公网 IP", "Run it and it's a server. Tunnel built in, no public IP."],
+    [31, 37.4, "一行命令，接上 Claude Code / Codex", "One command to connect Claude Code or Codex."],
+    [39.4, 55.4, "AI 远程读写文件、执行命令，每一次都记着", "AI reads, writes and runs commands remotely. Every call is logged."],
+    [57, 63.4, "三档权限，你说了算", "Three permission levels. You decide."],
+    [65, 71.4, "在别处，也能看这台电脑", "Watch this computer from anywhere."]
+  ],
+  "sfx": [
+    ["riser", 6], ["whoosh", 7.8], ["type", 9], ["type", 10.6], ["pop", 13], ["pop", 13.6], ["pop", 14.4], ["chime", 16.2],
+    ["whoosh", 19.6], ["pop", 21], ["pop", 22], ["pop", 23], ["whoosh", 29.6], ["click", 34], ["pop", 34.2],
+    ["whoosh", 37.6], ["type", 38.8], ["pop", 41.4], ["pop", 44.4], ["pop", 47.4], ["chime", 50.2],
+    ["whoosh", 55.6], ["click", 58], ["click", 60], ["click", 62], ["lock", 62.2],
+    ["whoosh", 63.6], ["swish", 64.4], ["boom", 72.2], ["chime", 74]
+  ]
+}
