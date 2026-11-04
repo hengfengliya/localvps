@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { Config } from "./config.js";
+import { downloadFile } from "./net.js";
 
 // 连不上 GitHub 时可以用 LOCALVPS_CLOUDFLARED_URL 换成镜像（末尾带 /，后面接文件名）
 const RELEASE = process.env.LOCALVPS_CLOUDFLARED_URL || "https://github.com/cloudflare/cloudflared/releases/latest/download/";
@@ -31,9 +32,7 @@ async function ensureCloudflared(cfg: Config): Promise<string> {
   // 先下到临时文件，完整了再改名，免得中途断网留下一个坏文件
   const tmp = path.join(binDir, `${asset}.download`);
   try {
-    const resp = await fetch(RELEASE + asset, { signal: AbortSignal.timeout(300_000) });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    fs.writeFileSync(tmp, Buffer.from(await resp.arrayBuffer()));
+    fs.writeFileSync(tmp, await downloadFile(RELEASE + asset));
   } catch (e) {
     fs.rmSync(tmp, { force: true });
     throw new Error(

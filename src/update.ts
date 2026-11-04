@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { downloadFile, fetchSmart } from "./net.js";
 import { VERSION } from "./version.js";
 
 const LATEST = process.env.LOCALVPS_UPDATE_URL || "https://api.github.com/repos/hengfengliya/localvps/releases/latest";
@@ -31,10 +32,7 @@ function newer(a: string, b: string): boolean {
 
 /** 有新版本返回它，没有返回 null；网络不通会抛错 */
 export async function checkUpdate(): Promise<Release | null> {
-  const r = await fetch(LATEST, {
-    headers: { accept: "application/vnd.github+json", "user-agent": `localvps/${VERSION}` },
-    signal: AbortSignal.timeout(15_000),
-  });
+  const r = await fetchSmart(LATEST, { headers: { accept: "application/vnd.github+json", "user-agent": `localvps/${VERSION}` } }, 15_000);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = (await r.json()) as { tag_name: string; body?: string; html_url: string; assets: { name: string; browser_download_url: string }[] };
   const version = j.tag_name.replace(/^v/, "");
@@ -47,20 +45,23 @@ export async function checkUpdate(): Promise<Release | null> {
   };
 }
 
-async function download(url: string): Promise<Buffer> {
-  const r = await fetch(url, { signal: AbortSignal.timeout(600_000) });
-  if (!r.ok) throw new Error(`下载失败：HTTP ${r.status}（${url}）`);
-  return Buffer.from(await r.arrayBuffer());
+async function download(url: string, onProgress?: (p: number) => void): Promise<Buffer> {
+  try {
+    return await downloadFile(url, onProgress);
+  } catch (e) {
+    throw new Error(`下载失败（${e instanceof Error ? e.message : e}）：${url}`);
+  }
 }
 
 /**
  * 下载新版、按 SHA256SUMS.txt 校验，然后换掉正在运行的文件，返回要重启的路径。
  * Windows 不能覆盖运行中的 exe，但可以改名：旧的改成 .old，新的放回原名。
  */
-export async function installUpdate(rel: Release): Promise<string> {
+export async function installUpdate(rel: Release, onProgress?: (p: number) => void): Promise<string> {
   const name = assetName();
   if (!rel.assets[name] || !rel.assets["SHA256SUMS.txt"]) throw new Error(`新版本里没有 ${name}`);
-  const [file, sums] = await Promise.all([download(rel.assets[name]), download(rel.assets["SHA256SUMS.txt"])]);
+  const sums = await download(rel.assets["SHA256SUMS.txt"]);
+  const file = await download(rel.assets[name], onProgress);
   const want = sums.toString("utf8").split(/\r?\n/).find((l) => l.trim().endsWith(name))?.split(/\s+/)[0];
   const got = createHash("sha256").update(file).digest("hex");
   if (!want || want !== got) throw new Error("新版本校验没通过（SHA256 对不上），没有替换");

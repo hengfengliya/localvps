@@ -148,7 +148,8 @@ async function main() {
     runtime.update.error = "";
     console.log(`正在下载新版本 ${rel.version}…`);
     try {
-      restartInto(await installUpdate(rel), stops);
+      runtime.update.progress = 0;
+      restartInto(await installUpdate(rel, (p) => (runtime.update.progress = p)), stops);
     } catch (e) {
       runtime.update.status = "error";
       runtime.update.error = e instanceof Error ? e.message : String(e);

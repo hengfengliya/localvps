@@ -55,6 +55,7 @@ export function buildState(cfg: Config, remote: boolean) {
     update: {
       latest: runtime.update.latest && { version: runtime.update.latest.version, notes: runtime.update.latest.notes, page: runtime.update.latest.page },
       status: runtime.update.status,
+      progress: runtime.update.progress,
       error: runtime.update.error,
       checkedAt: runtime.update.checkedAt,
       canSelfUpdate: canSelfUpdate(),

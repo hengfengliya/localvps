@@ -396,7 +396,7 @@ function renderUpdate() {
     btn.disabled = u.status === "updating";
     btn.textContent = u.status === "error" ? "重试" : "更新并重启";
     $("update-text").textContent =
-      u.status === "updating" ? "正在下载新版本 " + v + "，装好会自动重启" :
+      u.status === "updating" ? "正在下载新版本 " + v + (u.progress ? "（" + Math.round(u.progress * 100) + "%）" : "") + "，装好会自动重启" :
       u.status === "error" ? u.error :
       "新版本 " + v + " 可用" + (u.canSelfUpdate ? "" : "，从源码运行的话 git pull 后重新构建");
   }

@@ -43,6 +43,7 @@ export const runtime = {
   update: {
     latest: null as null | { version: string; notes: string; page: string; assets: Record<string, string> },
     status: "idle" as "idle" | "checking" | "updating" | "error",
+    progress: 0, // 下载新版本的进度 0～1
     error: "",
     checkedAt: 0,
   },
