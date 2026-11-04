@@ -67,7 +67,8 @@ export async function installUpdate(rel: Release, onProgress?: (p: number) => vo
   if (!want || want !== got) throw new Error("新版本校验没通过（SHA256 对不上），没有替换");
 
   const exe = process.execPath;
-  const staged = `${exe}.new`;
+  // Windows 上文件名不以 .exe 结尾就运行不了，临时文件叫 localvps.new.exe
+  const staged = process.platform === "win32" ? exe.replace(/\.exe$/i, "") + ".new.exe" : `${exe}.new`;
   // 新文件先跑一下 --version，跑不起来（比如被杀毒软件拦了）就不替换
   const preflight = (file: string) => {
     const r = spawnSync(file, ["--version"], { timeout: 30_000, windowsHide: true });
