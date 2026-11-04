@@ -115,6 +115,7 @@ function scheduleWindowsRestart(exe: string) {
     `  Add-Content -Encoding UTF8 (Join-Path $env:USERPROFILE '.localvps\\error.log') "$(Get-Date -Format o) 新版本启动后马上退出了（退出码 $($p.ExitCode)），已换回旧版本"`,
     `  Start-Process -FilePath ${q(exe)} -WorkingDirectory ${q(dir)}`,
     `}`,
+    `Remove-Item -LiteralPath $PSCommandPath -ErrorAction SilentlyContinue`,
   ].join("\r\n");
   const file = path.join(os.tmpdir(), `localvps-restart-${process.pid}.ps1`);
   fs.writeFileSync(file, "\ufeff" + script);
