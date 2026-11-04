@@ -3,7 +3,7 @@ import http from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Config } from "./config.js";
 import { buildState, html, json } from "./panel.js";
-import { audit as writeAudit, runtime } from "./runtime.js";
+import { audit as writeAudit, runtime, waitForPort } from "./runtime.js";
 import { buildServer } from "./tools.js";
 
 function same(a: string, b: string): boolean {
@@ -62,7 +62,8 @@ function send(res: http.ServerResponse, status: number, message: string) {
   res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message }, id: null }));
 }
 
-export function startServer(cfg: Config): Promise<http.Server> {
+export async function startServer(cfg: Config): Promise<http.Server> {
+  await waitForPort(cfg.port, cfg.host);
   const audit = (entry: object) => writeAudit(cfg.homeDir, entry);
 
   const httpServer = http.createServer(async (req, res) => {

@@ -33,7 +33,10 @@ export function systemProxy(): string | undefined {
 
 /** 先走系统代理，代理不通再直连。proxy 选项是 Bun 的；用 Node 跑源码时会被忽略，等于直连 */
 export async function fetchSmart(url: string, init: RequestInit = {}, timeoutMs = 60_000): Promise<Response> {
-  const proxy = systemProxy();
+  // 本机和局域网地址不走代理
+  const host = new URL(url).hostname;
+  const local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$)/.test(host);
+  const proxy = local ? undefined : systemProxy();
   if (proxy) {
     try {
       return await fetch(url, { ...init, proxy, signal: AbortSignal.timeout(timeoutMs) } as RequestInit);

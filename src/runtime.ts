@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import si from "systeminformation";
@@ -72,6 +73,25 @@ export function logError(message: string) {
     // 写不了日志也不影响运行
   }
   console.error(message);
+}
+
+/**
+ * 等端口空出来（最多 timeoutMs）。自我更新后旧进程刚关服务，Windows 释放端口要一会儿，
+ * 新进程一上来就 listen 会撞上「端口被占用」直接退出。
+ */
+export async function waitForPort(port: number, host: string, timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (let first = true; ; first = false) {
+    const free = await new Promise<boolean>((resolve) => {
+      const probe = net.createServer();
+      probe.once("error", () => resolve(false));
+      probe.listen(port, host, () => probe.close(() => resolve(true)));
+    });
+    if (free) return;
+    if (first) console.log(`端口 ${port} 还被占着，等它空出来…`);
+    if (Date.now() > deadline) throw new Error(`端口 ${port} 被别的程序占着，在 ~/.localvps/.env 里改 PORT / PANEL_PORT`);
+    await new Promise((r) => setTimeout(r, 1000));
+  }
 }
 
 export function startSampler() {

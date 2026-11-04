@@ -68,6 +68,15 @@ export async function installUpdate(rel: Release, onProgress?: (p: number) => vo
 
   const exe = process.execPath;
   const staged = `${exe}.new`;
+  // 新文件先跑一下 --version，跑不起来（比如被杀毒软件拦了）就不替换
+  const preflight = (file: string) => {
+    const r = spawnSync(file, ["--version"], { timeout: 30_000, windowsHide: true });
+    const out = r.stdout?.toString().trim();
+    if (r.status !== 0 || out !== rel.version) {
+      fs.rmSync(file, { force: true });
+      throw new Error(`新版本运行不起来，可能被杀毒软件拦截了（${r.error?.message || out || `退出码 ${r.status}`}），没有替换`);
+    }
+  };
   if (name.endsWith(".zip")) {
     const dir = `${exe}.unzip`;
     fs.rmSync(dir, { recursive: true, force: true });
@@ -79,9 +88,12 @@ export async function installUpdate(rel: Release, onProgress?: (p: number) => vo
     fs.renameSync(path.join(dir, "localvps"), staged);
     fs.rmSync(dir, { recursive: true, force: true });
     fs.chmodSync(staged, 0o755);
+    preflight(staged);
+    fs.copyFileSync(exe, `${exe}.old`); // 留一份，新版本起不来时回滚
     fs.renameSync(staged, exe);
   } else {
     fs.writeFileSync(staged, file);
+    preflight(staged);
     fs.rmSync(`${exe}.old`, { force: true });
     fs.renameSync(exe, `${exe}.old`);
     fs.renameSync(staged, exe);
@@ -89,9 +101,23 @@ export async function installUpdate(rel: Release, onProgress?: (p: number) => vo
   return exe;
 }
 
+/** 新版本起不来时换回旧文件；返回能不能回滚 */
+export function rollback(exe: string): boolean {
+  if (!fs.existsSync(`${exe}.old`)) return false;
+  try {
+    fs.rmSync(`${exe}.failed`, { force: true });
+    fs.renameSync(exe, `${exe}.failed`);
+    fs.renameSync(`${exe}.old`, exe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 启动时清掉上次更新留下的旧文件（Windows 上旧进程还在用时删不掉，下次再删） */
 export function cleanupOld() {
   try {
+    fs.rmSync(`${process.execPath}.failed`, { force: true });
     fs.rmSync(`${process.execPath}.old`, { force: true });
   } catch {
     // 下次再说

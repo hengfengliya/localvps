@@ -5,7 +5,7 @@ import { initMachine, startPanel } from "./panel.js";
 import { logError, runtime, startSampler } from "./runtime.js";
 import { startServer } from "./server.js";
 import { startTunnel } from "./tunnel.js";
-import { canSelfUpdate, checkUpdate, cleanupOld, installUpdate } from "./update.js";
+import { canSelfUpdate, checkUpdate, cleanupOld, installUpdate, rollback } from "./update.js";
 import { VERSION } from "./version.js";
 
 const LEVEL = {
@@ -59,20 +59,34 @@ ${cfg.tunnel === "cf-quick" ? "\n注意：临时隧道每次启动地址都会�
 `);
 }
 
-// 自我更新：换好文件后关掉自己的服务，在同一个窗口里起新版本，本进程只负责转发信号、等它退出
+// 自我更新：换好文件后关掉自己的服务，在同一个窗口里起新版本，本进程只负责转发信号、等它退出。
+// 新版本 20 秒内就异常退出，换回旧文件再起一次，免得机器没人管。
 function restartInto(exe: string, stops: (() => void)[]) {
   stops.forEach((s) => s());
   runtime.closers.forEach((c) => c());
   console.log("\n已更新，正在启动新版本…\n");
-  setTimeout(() => {
-    const child = spawn(exe, [], { stdio: "inherit", env: process.env });
-    child.on("exit", (code) => process.exit(code ?? 0));
-    for (const sig of ["SIGINT", "SIGTERM"] as const) process.removeAllListeners(sig).on(sig, () => child.kill(sig));
-  }, 1000);
+  let child: ReturnType<typeof spawn>;
+  const launch = (rolledBack: boolean) => {
+    const startedAt = Date.now();
+    child = spawn(exe, [], { stdio: "inherit", env: process.env });
+    child.on("error", (e) => logError(`启动新版本失败：${e.message}`));
+    child.on("exit", (code) => {
+      if (!rolledBack && code !== 0 && Date.now() - startedAt < 20_000 && rollback(exe)) {
+        logError(`新版本启动后马上退出了（退出码 ${code}），已换回旧版本`);
+        return launch(true);
+      }
+      process.exit(code ?? 0);
+    });
+  };
+  for (const sig of ["SIGINT", "SIGTERM"] as const) process.removeAllListeners(sig).on(sig, () => child?.kill(sig));
+  setTimeout(() => launch(false), 1000);
 }
 
 async function main() {
-  cleanupOld();
+  if (process.argv.includes("--version")) {
+    console.log(VERSION);
+    process.exit(0);
+  }
   const cfg = loadConfig();
   console.log(`localvps ${VERSION}`);
   await initMachine(cfg);
@@ -156,6 +170,8 @@ async function main() {
       logError(`更新失败：${runtime.update.error}`);
     }
   };
+  // 稳定跑 30 秒再删上次更新留下的备份：这之前出事，外层进程还要靠它回滚
+  setTimeout(cleanupOld, 30_000).unref();
   setTimeout(() => void runtime.checkUpdate(), 5000);
   setInterval(() => void runtime.checkUpdate(), 6 * 3600_000).unref();
 

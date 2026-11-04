@@ -6,7 +6,7 @@ import path from "node:path";
 import si from "systeminformation";
 import { type Config, expandHome, newViewKey, type Permission, saveEnv } from "./config.js";
 import html from "./panel-html.js";
-import { runtime } from "./runtime.js";
+import { runtime, waitForPort } from "./runtime.js";
 import { canSelfUpdate } from "./update.js";
 import { VERSION } from "./version.js";
 
@@ -181,6 +181,7 @@ export async function startPanel(cfg: Config): Promise<string> {
     server.close();
     server.closeAllConnections();
   });
+  await waitForPort(cfg.panelPort, "127.0.0.1");
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(cfg.panelPort, "127.0.0.1", () => resolve());
