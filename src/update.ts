@@ -75,7 +75,7 @@ export async function installUpdate(rel: Release, onProgress?: (p: number) => vo
     const out = r.stdout?.toString().trim();
     if (r.status !== 0 || out !== rel.version) {
       fs.rmSync(file, { force: true });
-      throw new Error(`新版本运行不起来，可能被杀毒软件拦截了（${r.error?.message || out || `退出码 ${r.status}`}），没有替换`);
+      throw new Error(`新版本试运行失败（${r.error?.message || out || `退出码 ${r.status}`}），没有替换；被杀毒软件拦截时也会这样`);
     }
   };
   if (name.endsWith(".zip")) {
