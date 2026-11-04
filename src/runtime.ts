@@ -64,7 +64,10 @@ export function logError(message: string) {
   try {
     const dir = path.join(os.homedir(), ".localvps");
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, "error.log"), line);
+    const file = path.join(dir, "error.log");
+    // 带 BOM，Windows 自带的 PowerShell 5.1、老记事本才认得出是 UTF-8
+    if (!fs.existsSync(file)) fs.writeFileSync(file, "\ufeff");
+    fs.appendFileSync(file, line);
   } catch {
     // 写不了日志也不影响运行
   }
