@@ -1,6 +1,6 @@
 {
   "name": "localvps",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Turn your Mac/Windows PC into a VPS for AI agents: remote MCP server with built-in Cloudflare tunnel, token auth and a dashboard.",
   "type": "module",
   "bin": {

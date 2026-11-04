@@ -400,7 +400,8 @@ function renderUpdate() {
       u.status === "error" ? u.error :
       "新版本 " + v + " 可用" + (u.canSelfUpdate ? "" : "，从源码运行的话 git pull 后重新构建");
   }
-  $("ver-desc").textContent = "当前 " + S.version + " · " + (
+  $("ver-desc").title = S.exePath || "";
+  $("ver-desc").textContent = "当前 " + S.version + (S.exePath ? "（" + S.exePath + "）" : "") + " · " + (
     u.status === "checking" ? "正在检查" :
     v ? "有新版本 " + v :
     u.status === "error" ? u.error :

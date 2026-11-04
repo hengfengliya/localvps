@@ -52,6 +52,7 @@ export function buildState(cfg: Config, remote: boolean) {
     hasCfToken: !!cfg.cfTunnelToken,
     keepAwake: cfg.keepAwake,
     openPanel: cfg.openPanel,
+    exePath: canSelfUpdate() ? process.execPath : "",
     update: {
       latest: runtime.update.latest && { version: runtime.update.latest.version, notes: runtime.update.latest.notes, page: runtime.update.latest.page },
       status: runtime.update.status,
