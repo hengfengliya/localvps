@@ -27,6 +27,7 @@ export function buildState(cfg: Config, remote: boolean) {
     startedAt: runtime.startedAt,
     status: runtime.paused ? "paused" : runtime.tunnel,
     tunnelKind: cfg.tunnel,
+    tunnelError: runtime.tunnel === "error" ? runtime.tunnelError : "",
     mcpUrl: runtime.publicUrl ? `${runtime.publicUrl}/mcp` : "",
     permission: cfg.permission,
     samples: runtime.samples,

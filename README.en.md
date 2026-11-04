@@ -180,9 +180,13 @@ The one-line install avoids this. For a manual download: System Settings → Pri
 
 Click "More info" → "Run anyway".
 
-**Where does cloudflared come from**
+**Where does cloudflared come from, and what if the download fails**
 
-On first run it is downloaded from Cloudflare's official GitHub Releases into `~/.localvps/bin/`. An existing cloudflared install is used if present.
+On first run it is downloaded from Cloudflare's official GitHub Releases into `~/.localvps/bin/`; an existing cloudflared install is used if present. If GitHub can't be reached, the dashboard shows a red notice and keeps retrying every minute while everything else keeps running. You can also download it manually as the notice says, or point `LOCALVPS_CLOUDFLARED_URL` at a mirror.
+
+**The program is gone and the dashboard says "已断开" (disconnected)**
+
+Check `~/.localvps/error.log` (on Windows `C:\Users\<you>\.localvps\error.log`) for the reason.
 
 **Does it work with Claude on the web or mobile?**
 

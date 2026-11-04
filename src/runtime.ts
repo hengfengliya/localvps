@@ -31,7 +31,8 @@ const MAX_SAMPLES = 100; // 3 秒一个点 ≈ 5 分钟
 export const runtime = {
   startedAt: Date.now(),
   publicUrl: "",
-  tunnel: "connecting" as "connecting" | "online" | "local",
+  tunnel: "connecting" as "connecting" | "online" | "local" | "error",
+  tunnelError: "", // 隧道连不上的原因，控制台显示
   paused: false,
   logs: [] as LogEntry[],
   samples: [] as Sample[],
@@ -45,6 +46,19 @@ export function audit(homeDir: string, entry: Omit<LogEntry, "time">) {
   runtime.logs.push(full);
   if (runtime.logs.length > MAX_LOGS) runtime.logs.shift();
   fs.appendFile(path.join(homeDir, "audit.log"), JSON.stringify(full) + "\n", () => {});
+}
+
+/** 出错写进 ~/.localvps/error.log：Windows 双击运行时窗口一关，报错就看不见了 */
+export function logError(message: string) {
+  const line = `${new Date().toISOString()} ${message}\n`;
+  try {
+    const dir = path.join(os.homedir(), ".localvps");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, "error.log"), line);
+  } catch {
+    // 写不了日志也不影响运行
+  }
+  console.error(message);
 }
 
 export function startSampler() {

@@ -34,7 +34,7 @@ async function realpathLoose(abs: string): Promise<string> {
 export function buildServer(cfg: Config, audit: (entry: object) => void): McpServer {
   const shell = process.platform === "win32" ? "PowerShell" : "bash/zsh";
   const server = new McpServer(
-    { name: "localvps", version: "0.1.0" },
+    { name: "localvps", version: "0.1.1" },
     {
       instructions:
         `This MCP server runs on a ${os.type()} ${os.release()} (${os.arch()}) machine, host "${os.hostname()}". ` +

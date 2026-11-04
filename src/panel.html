@@ -14,6 +14,7 @@
   .side-status .host { font-size: 12px; line-height: 17px; color: var(--ink-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .page { flex: 1; min-width: 0; max-width: var(--page-max); box-sizing: border-box; padding: 56px 40px 48px; }
   .mx-head { margin-bottom: var(--space-6); }
+  #tunnel-err { margin: calc(-1 * var(--space-4)) 0 var(--space-6); overflow-wrap: anywhere; }
   [hidden] { display: none !important; }
   a.mx-btn { text-decoration: none; }
   code, .mono { font-family: var(--font-mono); font-size: 13px; }
@@ -81,6 +82,7 @@
 
 <main class="page">
   <header class="mx-head"><h1 class="mx-title" id="title">概览</h1></header>
+  <div class="mx-error" id="tunnel-err" hidden></div>
 
   <div class="view" id="v-overview">
     <section class="mx-sec">
@@ -229,7 +231,7 @@ if (REMOTE) document.body.classList.add("remote");
 var PAGES = { overview: "概览", connect: "连接", logs: "调用日志", settings: "设置" };
 var STATUS = {
   online: ["运行中", "mx-status--ok"], connecting: ["隧道连接中", "mx-status--warn"],
-  local: ["仅本机", ""], paused: ["已暂停", "mx-status--warn"]
+  local: ["仅本机", ""], paused: ["已暂停", "mx-status--warn"], error: ["隧道没连上", "mx-status--risk"]
 };
 var TUNNEL = { "cf-quick": "临时地址 · 每次启动会变", cloudflare: "固定域名", none: "不用隧道 · 只能在本机访问" };
 var TUNNEL_DESC = {
@@ -317,6 +319,8 @@ function render() {
   $("status").innerHTML = '<span class="txt">' + st[0] + "</span>";
   $("status").title = st[0];
   $("host").textContent = S.machine.host;
+  $("tunnel-err").hidden = !S.tunnelError;
+  $("tunnel-err").textContent = S.tunnelError ? "隧道没连上：" + S.tunnelError : "";
 
   // 概览
   var sm = S.samples, last = sm[sm.length - 1];

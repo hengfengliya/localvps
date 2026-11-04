@@ -2,7 +2,7 @@
 import { spawn } from "node:child_process";
 import { loadConfig, type Config } from "./config.js";
 import { initMachine, startPanel } from "./panel.js";
-import { runtime, startSampler } from "./runtime.js";
+import { logError, runtime, startSampler } from "./runtime.js";
 import { startServer } from "./server.js";
 import { startTunnel } from "./tunnel.js";
 
@@ -16,6 +16,7 @@ const LEVEL = {
 function keepAwake(): (() => void) | undefined {
   if (process.platform === "darwin") {
     const c = spawn("caffeinate", ["-i", "-w", String(process.pid)], { stdio: "ignore" });
+    c.on("error", () => {});
     return () => c.kill();
   }
   if (process.platform === "win32") {
@@ -23,6 +24,7 @@ function keepAwake(): (() => void) | undefined {
       `Add-Type -Name P -Namespace W -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);';` +
       `[W.P]::SetThreadExecutionState(0x80000001) | Out-Null; while ($true) { Start-Sleep 3600 }`;
     const c = spawn("powershell.exe", ["-NoProfile", "-Command", ps], { stdio: "ignore", windowsHide: true });
+    c.on("error", () => {});
     return () => c.kill();
   }
 }
@@ -84,20 +86,26 @@ async function main() {
       return printConnectInfo(cfg, local, panel);
     }
     runtime.tunnel = "connecting";
+    runtime.tunnelError = "";
     runtime.publicUrl = "";
     console.log("正在建立隧道…");
-    tunnel = await startTunnel(
-      cfg,
-      (url) => {
+    tunnel = startTunnel(cfg, {
+      onUrl: (url) => {
         runtime.tunnel = "online";
+        runtime.tunnelError = "";
         runtime.publicUrl = url;
         printConnectInfo(cfg, url, panel);
       },
-      () => {
-        runtime.tunnel = "connecting";
+      onDown: () => {
+        if (runtime.tunnel !== "error") runtime.tunnel = "connecting";
         if (cfg.tunnel === "cf-quick") runtime.publicUrl = "";
       },
-    );
+      onError: (message) => {
+        runtime.tunnel = "error";
+        runtime.tunnelError = message;
+        logError(message);
+      },
+    });
   };
   await runtime.applyTunnel();
   const stops = [() => tunnel?.stop(), () => stopAwake?.()];
@@ -110,7 +118,16 @@ async function main() {
   process.on("SIGTERM", exit);
 }
 
-main().catch((e) => {
-  console.error(e instanceof Error ? e.message : e);
+// 意外错误只记日志不退出：服务和控制台继续跑，比整个进程悄悄消失好查
+process.on("uncaughtException", (e) => logError(`意外错误：${e.stack || e}`));
+process.on("unhandledRejection", (e) => logError(`意外错误：${e instanceof Error ? e.stack : e}`));
+
+main().catch(async (e) => {
+  logError(`启动失败：${e instanceof Error ? e.message : e}`);
+  // Windows 双击运行时窗口会立刻关掉，停一下让人看清报错
+  if (process.platform === "win32" && process.stdin.isTTY) {
+    process.stdout.write("\n按回车键退出…");
+    await new Promise((r) => process.stdin.once("data", r));
+  }
   process.exit(1);
 });

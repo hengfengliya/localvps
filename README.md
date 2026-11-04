@@ -178,9 +178,13 @@ cloudflared 要出站访问 Cloudflare 的 7844 端口。开着 Clash、Surge �
 
 点「更多信息」→「仍要运行」。
 
-**cloudflared 从哪来**
+**cloudflared 从哪来，下载不下来怎么办**
 
-首次运行从 Cloudflare 官方 GitHub Releases 下载到 `~/.localvps/bin/`。已经装了 cloudflared 就直接用。
+首次运行从 Cloudflare 官方 GitHub Releases 下载到 `~/.localvps/bin/`，已经装了 cloudflared 就直接用。连不上 GitHub 时控制台会标红提示，程序照常运行、每分钟自动重试；也可以按提示手动下载放进去，或者用环境变量 `LOCALVPS_CLOUDFLARED_URL` 指定一个镜像地址。
+
+**程序没了、控制台显示「已断开」**
+
+看 `~/.localvps/error.log`（Windows 是 `C:\Users\你的用户名\.localvps\error.log`），出错原因都记在里面。
 
 **能接 Claude 网页版、手机版吗**
 
