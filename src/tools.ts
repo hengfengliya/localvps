@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +8,72 @@ import { type Config, expandHome } from "./config.js";
 
 const MAX_READ = 256 * 1024;
 const MAX_OUTPUT = 30_000;
+const MAX_OUTPUT_BYTES = MAX_OUTPUT * 4;
+
+// Windows 命令行输出用的是系统代码页（中文系统是 GBK），不是 UTF-8
+const CODEPAGES: Record<string, string> = {
+  "936": "gbk", "54936": "gb18030", "950": "big5", "932": "shift_jis", "949": "euc-kr",
+  "866": "ibm866", "1250": "windows-1250", "1251": "windows-1251", "1252": "windows-1252",
+  "437": "windows-1252", "850": "windows-1252",
+};
+let consoleDecoder: TextDecoder | null = null;
+function legacyDecoder(): TextDecoder {
+  if (consoleDecoder) return consoleDecoder;
+  let label = "utf-8";
+  if (process.platform === "win32") {
+    try {
+      const out = spawnSync("cmd.exe", ["/c", "chcp"], { windowsHide: true }).stdout?.toString("latin1") || "";
+      label = CODEPAGES[out.match(/(\d+)\s*$/)?.[1] || ""] || label;
+    } catch {
+      // 拿不到就按 UTF-8
+    }
+  }
+  return (consoleDecoder = new TextDecoder(label));
+}
+
+// 先当 UTF-8 解；不是合法 UTF-8 再按系统代码页解
+function decode(buf: Buffer): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+  } catch {
+    return legacyDecoder().decode(buf);
+  }
+}
+
+// 按原始字节收集输出（一个字可能被拆在两段里），只留最后一段，截掉时注明
+function collector() {
+  let buf = Buffer.alloc(0);
+  let total = 0;
+  return {
+    push(d: Buffer) {
+      total += d.length;
+      buf = Buffer.concat([buf, d]);
+      if (buf.length > MAX_OUTPUT_BYTES) buf = buf.subarray(buf.length - MAX_OUTPUT_BYTES);
+    },
+    text() {
+      let b = buf;
+      let cut = total > b.length;
+      if (cut) while (b.length && (b[0] & 0xc0) === 0x80) b = b.subarray(1); // 去掉被截断的半个 UTF-8 字符
+      let s = decode(b);
+      if (s.length > MAX_OUTPUT) {
+        s = s.slice(-MAX_OUTPUT);
+        cut = true;
+      }
+      return cut ? `[earlier output omitted: ${total} bytes in total, showing the end]\n${s}` : s;
+    },
+  };
+}
+
+// 超时要杀整棵进程树：只杀 shell 的话，它起的子进程还占着输出管道，调用会一直等
+function killTree(pid: number | undefined) {
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") spawnSync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+    else process.kill(-pid, "SIGKILL");
+  } catch {
+    // 已经结束了
+  }
+}
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 const ok = (text: string): Result => ({ content: [{ type: "text", text }] });
@@ -34,7 +100,7 @@ async function realpathLoose(abs: string): Promise<string> {
 export function buildServer(cfg: Config, audit: (entry: object) => void): McpServer {
   const shell = process.platform === "win32" ? "PowerShell" : "bash/zsh";
   const server = new McpServer(
-    { name: "localvps", version: "0.1.1" },
+    { name: "localvps", version: "0.1.2" },
     {
       instructions:
         `This MCP server runs on a ${os.type()} ${os.release()} (${os.arch()}) machine, host "${os.hostname()}". ` +
@@ -144,27 +210,44 @@ export function buildServer(cfg: Config, audit: (entry: object) => void): McpSer
         },
       },
       wrap("run_command", async ({ command, cwd, timeout_sec }: { command: string; cwd?: string; timeout_sec: number }) => {
+        // Windows PowerShell 不会把原生程序的退出码传出来，末尾补一句
         const [bin, args] =
           process.platform === "win32"
-            ? ["powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command]]
+            ? ["powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+                `${command}\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }`]]
             : [process.env.SHELL || "/bin/bash", ["-lc", command]];
         const dir = cwd ? await resolve(cwd) : cfg.workdir;
         return new Promise<Result>((done) => {
-          const child = spawn(bin, args, { cwd: dir, windowsHide: true });
-          let out = "";
-          let err = "";
-          child.stdout.on("data", (d) => (out = (out + d).slice(-MAX_OUTPUT)));
-          child.stderr.on("data", (d) => (err = (err + d).slice(-MAX_OUTPUT)));
-          const timer = setTimeout(() => child.kill("SIGKILL"), timeout_sec * 1000);
+          // 非 Windows 放进单独的进程组，超时能一起杀掉
+          const child = spawn(bin, args, { cwd: dir, windowsHide: true, detached: process.platform !== "win32" });
+          const out = collector();
+          const err = collector();
+          child.stdout.on("data", (d: Buffer) => out.push(d));
+          child.stderr.on("data", (d: Buffer) => err.push(d));
+          let timedOut = false;
+          let finished = false;
+          const finish = (head: string, success: boolean) => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timer);
+            const text = `${head}\n--- stdout ---\n${out.text()}\n--- stderr ---\n${err.text()}`;
+            done(success ? ok(text) : fail(text));
+          };
+          const timer = setTimeout(() => {
+            timedOut = true;
+            killTree(child.pid);
+            // 万一还有进程占着管道，2 秒后不再等
+            setTimeout(() => finish(`timed out after ${timeout_sec}s, process tree killed`, false), 2000);
+          }, timeout_sec * 1000);
           child.on("error", (e) => {
+            if (finished) return;
+            finished = true;
             clearTimeout(timer);
             done(fail(e.message));
           });
-          child.on("close", (code, signal) => {
-            clearTimeout(timer);
-            const head = signal ? `killed by ${signal} (timeout ${timeout_sec}s?)` : `exit code ${code}`;
-            const text = `${head}\n--- stdout ---\n${out}\n--- stderr ---\n${err}`;
-            done(code === 0 ? ok(text) : fail(text));
+          child.on("close", (code) => {
+            if (timedOut) return finish(`timed out after ${timeout_sec}s, process tree killed`, false);
+            finish(`exit code ${code}`, code === 0);
           });
         });
       }),
