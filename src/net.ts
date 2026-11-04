@@ -47,20 +47,36 @@ export async function fetchSmart(url: string, init: RequestInit = {}, timeoutMs 
   return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
 }
 
-/** 下载整个文件，边下边报进度（0～1，不知道总大小时不报） */
+/**
+ * 下载整个文件，边下边报进度（0～1，不知道总大小时不报）。
+ * 中途断线会从断开的位置续传（Range），最多再试 3 次；服务器不支持续传就从头下。
+ */
 export async function downloadFile(url: string, onProgress?: (p: number) => void, timeoutMs = 600_000): Promise<Buffer> {
-  const r = await fetchSmart(url, {}, timeoutMs);
-  if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
-  const total = Number(r.headers.get("content-length")) || 0;
   const chunks: Uint8Array[] = [];
   let got = 0;
-  const reader = r.body.getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    got += value.length;
-    if (total && onProgress) onProgress(got / total);
+  let total = 0;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetchSmart(url, got ? { headers: { range: `bytes=${got}-` } } : {}, timeoutMs);
+      if (got && r.status !== 206) {
+        chunks.length = 0; // 不支持续传，从头来
+        got = 0;
+      }
+      if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+      if (!total) total = got + (Number(r.headers.get("content-length")) || 0);
+      const reader = r.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        got += value.length;
+        if (total && onProgress) onProgress(got / total);
+      }
+      if (total && got < total) throw new Error(`只下到 ${got}/${total} 字节`);
+      return Buffer.concat(chunks);
+    } catch (e) {
+      if (attempt >= 3) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
   }
-  return Buffer.concat(chunks);
 }
