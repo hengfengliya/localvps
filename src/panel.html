@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>localvps</title>
+<!-- favicon -->
+<!-- beayy -->
+<style>
+  /* 只放本页的布局；颜色、字号、圆角都取 Beayy 令牌 */
+  body { padding: 0; display: flex; min-height: 100vh; }
+  .mx-side { position: sticky; top: 0; height: 100vh; flex: none; }
+  .side-status { display: flex; flex-direction: column; gap: 2px; padding: 8px; }
+  .side-status .host { font-size: 12px; line-height: 17px; color: var(--ink-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page { flex: 1; min-width: 0; max-width: var(--page-max); box-sizing: border-box; padding: 56px 40px 48px; }
+  .mx-head { margin-bottom: var(--space-6); }
+  [hidden] { display: none !important; }
+  code, .mono { font-family: var(--font-mono); font-size: 13px; }
+
+  .charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-5); }
+  .chart-label { display: flex; gap: var(--space-3); font-size: 12px; line-height: 17px; color: var(--ink-3); margin-bottom: var(--space-2); }
+  .chart-label i { font-style: normal; display: inline-flex; align-items: center; gap: 6px; }
+  .chart-label i::before { content: ""; width: 12px; border-top: 1.5px solid var(--ink); }
+  .chart-label i.dash::before { border-top: 1.5px dashed var(--ink-3); }
+  .chart svg { display: block; width: 100%; height: 132px; }
+  .chart .gl { stroke: var(--line-2); }
+  .chart text { fill: var(--ink-4); font-size: 11px; font-family: var(--font-sans); }
+  .is-high { color: var(--warn-ink); }
+
+  .mx-setting:last-child { border-bottom: 0; }
+  .mx-setting-desc.mono { overflow-wrap: anywhere; }
+  .actions { display: flex; gap: var(--space-2); flex: none; }
+  .code {
+    margin: 0; padding: 12px 16px; border-radius: var(--radius-lg); background: var(--sunken);
+    font: 13px/20px var(--font-mono); color: var(--ink); white-space: pre-wrap; word-break: break-all;
+  }
+  .code-note { margin-top: var(--space-2); font-size: 13px; line-height: 17px; color: var(--ink-3); }
+
+  .mx-table col.c-time { width: 96px; } .mx-table col.c-op { width: 128px; }
+  .mx-table col.c-ms { width: 80px; } .mx-table col.c-res { width: 96px; }
+  .mx-table td.args { color: var(--ink-3); font-family: var(--font-mono); font-size: 12px; }
+
+  .mx-scrim { position: fixed; inset: 0; z-index: 10; }
+  .mx-scrim[hidden] { display: none; }
+  .mx-dialog-body p { margin: 0; color: var(--ink-2); }
+  .mx-dialog-body ol { margin: 0; padding-left: 20px; font-size: 13px; line-height: 20px; color: var(--ink-2); }
+  .mx-dialog-body ol code { font-size: 12px; }
+  .dlg-desc { font-size: 13px; line-height: 17px; color: var(--ink-3); }
+  .mx-field-error:empty { display: none; }
+  body.remote .local-only { display: none !important; }
+
+  @media (max-width: 1100px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 760px) {
+    .mx-side { width: var(--sidebar-collapsed); }
+    .mx-side .mx-nav a span, .mx-side .mx-brand, .side-status .host, .side-status .txt { display: none; }
+    .mx-side .mx-nav a { justify-content: center; padding: 0; }
+    .side-status { align-items: center; }
+    .page { padding: 24px 16px 40px; }
+    .mx-stat { padding: 0 24px 0 0; border-left: 0; }
+    .mx-setting { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<aside class="mx-side">
+  <div class="mx-side-head"><span class="mx-brand">localvps</span></div>
+  <nav class="mx-nav">
+    <a href="#overview" data-page="overview"><svg class="mx-ico" viewBox="0 0 16 16"><path d="M1.5 8.5h3l2-5 3 9 2-4h3"/></svg><span>概览</span></a>
+    <a href="#connect" data-page="connect"><svg class="mx-ico" viewBox="0 0 16 16"><path d="M6.5 9.5l3-3M7 4.5l1-1a2.8 2.8 0 0 1 4 4l-1 1M9 11.5l-1 1a2.8 2.8 0 0 1-4-4l1-1"/></svg><span>连接</span></a>
+    <a href="#logs" data-page="logs"><svg class="mx-ico" viewBox="0 0 16 16"><path d="M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.01M2.5 8h.01M2.5 12h.01"/></svg><span>调用日志</span></a>
+    <a href="#settings" data-page="settings" class="local-only"><svg class="mx-ico" viewBox="0 0 16 16"><path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.5"/><circle cx="6" cy="11.5" r="1.5"/></svg><span>设置</span></a>
+  </nav>
+  <div class="mx-side-foot">
+    <div class="side-status">
+      <span class="mx-status" id="status"><span class="txt">连接中</span></span>
+      <span class="host" id="host"></span>
+    </div>
+  </div>
+</aside>
+
+<main class="page">
+  <header class="mx-head"><h1 class="mx-title" id="title">概览</h1></header>
+
+  <div class="view" id="v-overview">
+    <section class="mx-sec">
+      <div class="mx-stats">
+        <div class="mx-stat"><div class="mx-stat-label">CPU</div><div class="mx-stat-value" id="st-cpu">—</div></div>
+        <div class="mx-stat"><div class="mx-stat-label">内存</div><div class="mx-stat-value" id="st-mem">—</div></div>
+        <div class="mx-stat"><div class="mx-stat-label">上行</div><div class="mx-stat-value" id="st-tx">—</div></div>
+        <div class="mx-stat"><div class="mx-stat-label">下行</div><div class="mx-stat-value" id="st-rx">—</div></div>
+        <div class="mx-stat"><div class="mx-stat-label">磁盘</div><div class="mx-stat-value" id="st-disk">—</div></div>
+      </div>
+    </section>
+    <section class="mx-sec">
+      <div class="mx-sec-head"><h2>近 5 分钟</h2></div>
+      <div class="charts">
+        <div class="chart"><div class="chart-label"><i>CPU %</i></div><svg id="ch-cpu"></svg></div>
+        <div class="chart"><div class="chart-label"><i>内存 GB</i></div><svg id="ch-mem"></svg></div>
+        <div class="chart"><div class="chart-label"><i>上行</i><i class="dash">下行</i></div><svg id="ch-net"></svg></div>
+      </div>
+    </section>
+    <section class="mx-sec">
+      <div class="mx-sec-head"><h2>这台电脑</h2></div>
+      <dl class="mx-facts">
+        <div><dt>主机名</dt><dd id="f-host">—</dd></div>
+        <div><dt>系统</dt><dd id="f-os">—</dd></div>
+        <div><dt>CPU</dt><dd id="f-cpu">—</dd></div>
+        <div><dt>内存</dt><dd class="mx-num" id="f-mem">—</dd></div>
+        <div><dt>磁盘</dt><dd class="mx-num" id="f-disk">—</dd></div>
+        <div><dt>隧道</dt><dd id="f-tunnel">—</dd></div>
+        <div><dt>已运行</dt><dd class="mx-num" id="f-uptime">—</dd></div>
+        <div><dt>启动时间</dt><dd class="mx-num" id="f-started">—</dd></div>
+      </dl>
+    </section>
+  </div>
+
+  <div class="view" id="v-connect" hidden>
+    <section class="mx-sec">
+      <div class="mx-sec-head"><h2 id="c-head">地址和令牌</h2></div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">MCP 地址</div><div class="mx-setting-desc mono" id="c-url">—</div></div>
+        <div class="actions"><button class="mx-btn mx-btn--secondary mx-btn--sm" data-copy="url">复制</button></div>
+      </div>
+      <div class="mx-setting local-only">
+        <div class="mx-setting-main"><div class="mx-setting-name">访问令牌</div><div class="mx-setting-desc mono" id="c-token">—</div></div>
+        <div class="actions">
+          <button class="mx-btn mx-btn--text mx-btn--sm" id="btn-show">查看</button>
+          <button class="mx-btn mx-btn--secondary mx-btn--sm" data-copy="token">复制</button>
+        </div>
+      </div>
+      <div class="mx-setting local-only">
+        <div class="mx-setting-main"><div class="mx-setting-name">远程查看链接</div><div class="mx-setting-desc mono" id="c-view">—</div></div>
+        <div class="actions">
+          <button class="mx-btn mx-btn--text mx-btn--sm" id="btn-viewkey">重置</button>
+          <button class="mx-btn mx-btn--secondary mx-btn--sm" data-copy="view">复制</button>
+        </div>
+      </div>
+    </section>
+    <section class="mx-sec">
+      <div class="mx-sec-head">
+        <h2>接到 AI 客户端</h2>
+        <div class="mx-seg" id="client">
+          <button data-client="claude" class="is-on">Claude Code</button>
+          <button data-client="codex">Codex</button>
+        </div>
+        <div class="mx-sec-aside"><button class="mx-btn mx-btn--secondary mx-btn--sm" data-copy="snippet">复制</button></div>
+      </div>
+      <pre class="code" id="c-snippet">—</pre>
+      <div class="code-note" id="c-note"></div>
+    </section>
+  </div>
+
+  <div class="view" id="v-logs" hidden>
+    <section class="mx-sec">
+      <div class="mx-stats">
+        <div class="mx-stat"><div class="mx-stat-label">今天调用</div><div class="mx-stat-value" id="s-calls">0</div></div>
+        <div class="mx-stat"><div class="mx-stat-label">失败</div><div class="mx-stat-value" id="s-errors">0</div></div>
+        <div class="mx-stat"><div class="mx-stat-label">拦截</div><div class="mx-stat-value" id="s-blocked">0</div></div>
+      </div>
+    </section>
+    <section class="mx-sec" id="logs-wrap"></section>
+  </div>
+
+  <div class="view" id="v-settings" hidden>
+    <section class="mx-sec">
+      <div class="mx-sec-head"><h2>访问</h2></div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">权限</div><div class="mx-setting-desc" id="perm-desc">—</div></div>
+        <div class="mx-seg" id="perm">
+          <button data-perm="readonly">只读</button>
+          <button data-perm="workspace">工作目录</button>
+          <button data-perm="full">完全权限</button>
+        </div>
+      </div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">接受 AI 调用</div><div class="mx-setting-desc" id="pause-desc">—</div></div>
+        <button class="mx-switch" role="switch" id="sw-serve" aria-checked="true" aria-label="接受 AI 调用"></button>
+      </div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">访问令牌</div><div class="mx-setting-desc">重置后旧令牌立即失效，客户端要换成新的</div></div>
+        <button class="mx-btn mx-btn--secondary mx-btn--sm" id="btn-token">重置</button>
+      </div>
+    </section>
+    <section class="mx-sec">
+      <div class="mx-sec-head"><h2>网络</h2></div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">隧道</div><div class="mx-setting-desc" id="tunnel-desc">—</div></div>
+        <div class="actions">
+          <button class="mx-btn mx-btn--text mx-btn--sm" id="btn-tunnel">换地址</button>
+          <button class="mx-btn mx-btn--secondary mx-btn--sm" id="btn-tunnel-cfg">更改</button>
+        </div>
+      </div>
+    </section>
+    <section class="mx-sec">
+      <div class="mx-sec-head"><h2>本机</h2></div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">工作目录</div><div class="mx-setting-desc mono" id="s-workdir">—</div></div>
+        <button class="mx-btn mx-btn--secondary mx-btn--sm" id="btn-workdir">更改</button>
+      </div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">运行时不休眠</div><div class="mx-setting-desc">电脑睡着了 AI 就连不上</div></div>
+        <button class="mx-switch" role="switch" id="sw-awake" aria-label="运行时不休眠"></button>
+      </div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">启动时打开控制台</div></div>
+        <button class="mx-switch" role="switch" id="sw-open" aria-label="启动时打开控制台"></button>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="mx-scrim" id="dlg" hidden>
+  <div class="mx-dialog mx-dialog--sm" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+    <div class="mx-dialog-head"><h2 id="dlg-title"></h2></div>
+    <div class="mx-dialog-body" id="dlg-body"></div>
+    <div class="mx-dialog-foot">
+      <button class="mx-btn mx-btn--text" id="dlg-cancel">取消</button>
+      <button class="mx-btn" id="dlg-ok"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+var REMOTE = location.pathname.indexOf("/view") === 0;
+var API = REMOTE ? "/view/api" : "/api";
+var S = null, client = "claude", showToken = false, pending = null, tunnelKind = "cf-quick";
+if (REMOTE) document.body.classList.add("remote");
+var PAGES = { overview: "概览", connect: "连接", logs: "调用日志", settings: "设置" };
+var STATUS = {
+  online: ["运行中", "mx-status--ok"], connecting: ["隧道连接中", "mx-status--warn"],
+  local: ["仅本机", ""], paused: ["已暂停", "mx-status--warn"]
+};
+var TUNNEL = { "cf-quick": "临时地址 · 每次启动会变", cloudflare: "固定域名", none: "不用隧道 · 只能在本机访问" };
+var TUNNEL_DESC = {
+  "cf-quick": "不用注册，每次启动换一个地址",
+  cloudflare: "地址不变，需要 Cloudflare 账号和一个托管在 Cloudflare 的域名",
+  none: "只能在这台电脑或局域网里访问"
+};
+var PERM = {
+  readonly: "只能读工作目录里的文件",
+  workspace: "能读写工作目录里的文件，不能执行命令",
+  full: "能读写任意文件、执行任意命令"
+};
+var TOOL = { list_dir: "列目录", read_file: "读文件", write_file: "写文件", edit_file: "改文件", run_command: "执行命令" };
+
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function split(n) {
+  var u = ["B", "KB", "MB", "GB", "TB"], i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return [n.toFixed(i >= 3 || (n < 10 && i > 0) ? 1 : 0), u[i]];
+}
+function bytes(n) { var p = split(n); return p[0] + " " + p[1]; }
+function pad(n) { return (n < 10 ? "0" : "") + n; }
+function clock(t, sec) { var d = new Date(t); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + (sec ? ":" + pad(d.getSeconds()) : ""); }
+function fullTime(t) { var d = new Date(t); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + clock(t); }
+function duration(ms) {
+  var m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60);
+  return (d ? d + " 天 " : "") + (d || h ? h + " 小时 " : "") + (m % 60) + " 分钟";
+}
+function stat(id, v, unit, cls) { var el = $(id); el.innerHTML = v + (unit ? "<small>" + unit + "</small>" : ""); el.className = "mx-stat-value" + (cls ? " " + cls : ""); }
+function ink(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function masked() { return S.token.slice(0, 5) + "••••••••••••••••"; }
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+// 折线图：Claude 没有的结构，按 Beayy 只用墨色和灰
+function chart(svg, times, series, fixedMax, fmt) {
+  var W = Math.max(200, Math.round(svg.getBoundingClientRect().width)), H = 132, L = 44, R = 4, T = 6, B = 20;
+  var w = W - L - R, h = H - T - B, n = times.length, all = [0];
+  series.forEach(function (s) { all = all.concat(s.values); });
+  var max = fixedMax || niceMax(Math.max.apply(null, all) * 1.15), out = "";
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+  for (var i = 0; i <= 2; i++) {
+    var y = T + h * i / 2;
+    out += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/>';
+    out += '<text x="' + (L - 8) + '" y="' + (y + 4) + '" text-anchor="end">' + fmt(max * (2 - i) / 2) + "</text>";
+  }
+  if (n > 1) {
+    out += '<text x="' + L + '" y="' + (H - 4) + '">' + clock(times[0]) + "</text>";
+    out += '<text x="' + (W - R) + '" y="' + (H - 4) + '" text-anchor="end">' + clock(times[n - 1]) + "</text>";
+    series.forEach(function (s) {
+      var pts = s.values.map(function (v, i) { return (L + w * i / (n - 1)).toFixed(1) + "," + (T + h - h * Math.min(v, max) / max).toFixed(1); }).join(" ");
+      out += '<polyline points="' + pts + '" fill="none" stroke="' + s.color + '" stroke-width="1.5" stroke-linejoin="round"' + (s.dash ? ' stroke-dasharray="3 3"' : "") + "/>";
+    });
+  }
+  svg.innerHTML = out;
+}
+
+function snippet(real) {
+  if (!S.mcpUrl) return "隧道连上后显示";
+  var tok = REMOTE ? "<令牌>" : real || showToken ? S.token : masked();
+  if (client === "claude") return "claude mcp add --transport http localvps " + S.mcpUrl + ' --header "Authorization: Bearer ' + tok + '"';
+  return '[mcp_servers.localvps]\nurl = "' + S.mcpUrl + '"\nhttp_headers = { Authorization = "Bearer ' + tok + '" }';
+}
+
+if (REMOTE) document.getElementById("c-head").textContent = "地址";
+
+function route() {
+  var page = (location.hash || "#overview").slice(1);
+  if (!PAGES[page] || (REMOTE && page === "settings")) page = "overview";
+  $("title").textContent = PAGES[page];
+  document.title = PAGES[page] + " · localvps";
+  Object.keys(PAGES).forEach(function (p) { $("v-" + p).hidden = p !== page; });
+  document.querySelectorAll(".mx-nav a").forEach(function (a) { a.classList.toggle("is-on", a.dataset.page === page); });
+  if (S) render();
+}
+
+function render() {
+  var st = STATUS[S.status] || STATUS.connecting;
+  $("status").className = "mx-status " + st[1];
+  $("status").innerHTML = '<span class="txt">' + st[0] + "</span>";
+  $("status").title = st[0];
+  $("host").textContent = S.machine.host;
+
+  // 概览
+  var sm = S.samples, last = sm[sm.length - 1];
+  $("f-host").textContent = S.machine.host;
+  $("f-os").textContent = S.machine.os + " · " + S.machine.arch;
+  $("f-cpu").textContent = S.machine.cpu + " · " + S.machine.cores + " 核";
+  $("f-tunnel").textContent = TUNNEL[S.tunnelKind];
+  $("f-uptime").textContent = duration(Date.now() - S.startedAt);
+  $("f-started").textContent = fullTime(S.startedAt);
+  if (last) {
+    var dp = last.diskUsed / last.diskTotal * 100, tx = split(last.tx), rx = split(last.rx);
+    stat("st-cpu", last.cpu.toFixed(1), "%");
+    stat("st-mem", (last.memUsed / 1073741824).toFixed(1), "/ " + bytes(last.memTotal));
+    stat("st-tx", tx[0], tx[1] + "/s");
+    stat("st-rx", rx[0], rx[1] + "/s");
+    stat("st-disk", dp.toFixed(0), "% · 剩 " + bytes(last.diskTotal - last.diskUsed), dp > 90 ? "is-high" : "");
+    $("f-mem").textContent = bytes(last.memTotal);
+    $("f-disk").textContent = bytes(last.diskTotal);
+    if (!$("v-overview").hidden) {
+      var t = sm.map(function (s) { return s.t; });
+      chart($("ch-cpu"), t, [{ values: sm.map(function (s) { return s.cpu; }), color: ink("--ink") }], 100, function (v) { return v.toFixed(0); });
+      chart($("ch-mem"), t, [{ values: sm.map(function (s) { return s.memUsed / 1073741824; }), color: ink("--ink") }],
+        Math.ceil(last.memTotal / 1073741824), function (v) { return v.toFixed(0); });
+      chart($("ch-net"), t, [
+        { values: sm.map(function (s) { return s.tx; }), color: ink("--ink") },
+        { values: sm.map(function (s) { return s.rx; }), color: ink("--ink-3"), dash: true }
+      ], 0, function (v) { return split(v).join(""); });
+    }
+  }
+
+  // 连接（远程只有地址和配置，没有令牌）
+  $("c-url").textContent = S.mcpUrl || "隧道连上后显示";
+  $("c-snippet").textContent = snippet();
+  $("c-note").textContent = (client === "claude" ? "在终端里执行" : "追加到 ~/.codex/config.toml，重启 Codex") +
+    (REMOTE ? "；<令牌> 换成这台电脑主人给你的访问令牌" : "");
+  document.querySelectorAll("#client button").forEach(function (b) { b.classList.toggle("is-on", b.dataset.client === client); });
+  renderLogs();
+  if (REMOTE) return;
+  $("c-view").textContent = S.viewUrl || "隧道连上后显示";
+  $("c-token").textContent = showToken ? S.token : masked();
+  $("btn-show").textContent = showToken ? "隐藏" : "查看";
+
+  // 设置
+  document.querySelectorAll("#perm button").forEach(function (b) { b.classList.toggle("is-on", b.dataset.perm === S.permission); });
+  $("perm-desc").textContent = PERM[S.permission];
+  var serving = S.status !== "paused";
+  $("sw-serve").setAttribute("aria-checked", String(serving));
+  $("pause-desc").textContent = serving ? "关掉后 AI 的调用都会被拒绝" : "已暂停，AI 的调用都会被拒绝";
+  $("tunnel-desc").textContent = S.tunnelKind === "cloudflare" ? "固定域名 · " + S.publicUrl.replace("https://", "") : TUNNEL[S.tunnelKind];
+  $("btn-tunnel").hidden = S.tunnelKind === "none";
+  $("btn-tunnel").textContent = S.tunnelKind === "cf-quick" ? "换地址" : "重连";
+  $("s-workdir").textContent = S.workdir;
+  $("sw-awake").setAttribute("aria-checked", String(S.keepAwake));
+  $("sw-open").setAttribute("aria-checked", String(S.openPanel));
+}
+
+function renderLogs() {
+  $("s-calls").textContent = S.stats.calls;
+  $("s-errors").textContent = S.stats.errors;
+  $("s-blocked").textContent = S.stats.blocked;
+  $("logs-wrap").innerHTML = S.logs.length
+    ? '<div class="mx-table-wrap"><table class="mx-table"><colgroup><col class="c-time"><col class="c-op"><col><col class="c-ms"><col class="c-res"></colgroup>' +
+      "<thead><tr><th>时间</th><th>操作</th><th>参数</th><th class=\"is-num\">耗时</th><th>结果</th></tr></thead><tbody>" +
+      S.logs.map(function (l) {
+        var blocked = l.event === "unauthorized";
+        var args = blocked ? "来源 " + (l.ip || "未知") : JSON.stringify(l.args || {});
+        var res = blocked ? '<span class="mx-status mx-status--warn">已拦截</span>'
+          : l.error ? '<span class="mx-status mx-status--risk">失败</span>' : '<span class="mx-status mx-status--ok">成功</span>';
+        return '<tr><td class="mx-num">' + clock(l.time, true) + "</td><td>" + (blocked ? "无效令牌" : esc(TOOL[l.tool] || l.tool)) +
+          '</td><td class="args" title="' + esc(args) + '">' + esc(args) + '</td><td class="is-num">' + (l.ms != null ? l.ms + " ms" : "") +
+          "</td><td>" + res + "</td></tr>";
+      }).join("") + "</tbody></table></div>"
+    : '<div class="mx-empty"><div>AI 还没调用过</div><a class="mx-btn mx-btn--secondary local-only" href="#connect">查看接入方式</a></div>';
+
+}
+
+function load() {
+  return fetch(API + "/state").then(function (r) { if (!r.ok) throw r; return r.json(); }).then(function (d) { S = d; render(); })
+    .catch(function () { $("status").className = "mx-status mx-status--risk"; $("status").innerHTML = '<span class="txt">已断开</span>'; });
+}
+
+function act(action, value) {
+  return fetch("/api/action", {
+    method: "POST", headers: { "content-type": "application/json", "x-localvps": "1" },
+    body: JSON.stringify({ action: action, value: value })
+  }).then(function (r) { return r.json(); }).then(function (d) { load(); return d.error; });
+}
+
+// 小弹层：body 是 HTML；onOk 返回 Promise<错误文案|undefined>，有错就留在弹层里显示
+function dialog(title, body, okText, danger, onOk) {
+  $("dlg-title").textContent = title;
+  $("dlg-body").innerHTML = body + '<div class="mx-field-error" id="dlg-err"></div>';
+  $("dlg-ok").textContent = okText;
+  $("dlg-ok").className = "mx-btn " + (danger ? "mx-btn--danger" : "mx-btn--primary");
+  pending = onOk;
+  $("dlg").hidden = false;
+  var first = $("dlg-body").querySelector("input");
+  (first || $("dlg-ok")).focus();
+}
+function ask(title, text, okText, danger, fn) { dialog(title, "<p>" + esc(text) + "</p>", okText, danger, fn); }
+
+function tunnelBody() {
+  var steps = '<ol><li>登录 Cloudflare，进入 Zero Trust → 网络 → Tunnels，创建一条隧道</li>' +
+    "<li>复制安装命令里 <code>--token</code> 后面那一长串，填到上面的隧道令牌</li>" +
+    "<li>在隧道的 Public Hostname 里加一个域名，服务填 <code>http://127.0.0.1:" + S.port + "</code></li>" +
+    "<li>把这个域名填到上面，写成 <code>https://</code> 开头</li></ol>";
+  return '<div class="mx-seg" id="tk">' +
+    ["cf-quick", "cloudflare", "none"].map(function (k) {
+      return '<button data-tk="' + k + '"' + (k === tunnelKind ? ' class="is-on"' : "") + ">" + { "cf-quick": "临时地址", cloudflare: "固定域名", none: "不用隧道" }[k] + "</button>";
+    }).join("") + "</div>" +
+    '<div class="dlg-desc">' + TUNNEL_DESC[tunnelKind] + "</div>" +
+    (tunnelKind === "cloudflare"
+      ? '<div class="mx-field"><label for="tk-token">隧道令牌</label><input class="mx-input" id="tk-token" autocomplete="off" placeholder="' + (S.hasCfToken ? "已填写，留空不改" : "eyJh…") + '"></div>' +
+        '<div class="mx-field"><label for="tk-url">域名</label><input class="mx-input" id="tk-url" placeholder="https://vps.example.com" value="' + esc(S.publicUrl || "") + '"></div>' +
+        '<div class="mx-field"><label>怎么获取</label>' + steps + "</div>"
+      : "");
+}
+function openTunnelDialog() {
+  dialog("隧道", tunnelBody(), "保存", false, function () {
+    var v = { kind: tunnelKind };
+    if (tunnelKind === "cloudflare") { v.token = $("tk-token").value; v.url = $("tk-url").value; }
+    return act("set_tunnel", v);
+  });
+}
+function closeDlg() { $("dlg").hidden = true; pending = null; }
+
+document.addEventListener("click", function (e) {
+  var b = e.target.closest("button"); if (!b) return;
+  if (b.id === "dlg-cancel") return closeDlg();
+  if (b.id === "dlg-ok") {
+    var fn = pending; if (!fn) return closeDlg();
+    b.disabled = true;
+    return Promise.resolve(fn()).then(function (err) {
+      b.disabled = false;
+      if (err) $("dlg-err").textContent = err; else closeDlg();
+    });
+  }
+  if (b.dataset.tk) {
+    var keep = { token: $("tk-token") && $("tk-token").value, url: $("tk-url") && $("tk-url").value };
+    tunnelKind = b.dataset.tk;
+    $("dlg-body").innerHTML = tunnelBody() + '<div class="mx-field-error" id="dlg-err"></div>';
+    if ($("tk-token") && keep.token) $("tk-token").value = keep.token;
+    if ($("tk-url") && keep.url) $("tk-url").value = keep.url;
+    return;
+  }
+  if (!S) return;
+  if (b.dataset.copy) {
+    var text = { url: S.mcpUrl, token: S.token, view: S.viewUrl, snippet: S.mcpUrl && snippet(true) }[b.dataset.copy];
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(function () {
+      b.textContent = "已复制"; setTimeout(function () { b.textContent = "复制"; }, 1500);
+    });
+  } else if (b.dataset.client) { client = b.dataset.client; render(); }
+  else if (b.id === "btn-show") { showToken = !showToken; render(); }
+  else if (b.dataset.perm) {
+    var v = b.dataset.perm;
+    if (v === S.permission) return;
+    if (v === "full") ask("改成完全权限", "AI 将能读写这台电脑上的任意文件、执行任意命令。拿到令牌的人都有这个权限。", "改成完全权限", true, function () { return act("set_permission", v); });
+    else act("set_permission", v);
+  } else if (b.id === "sw-serve") act(S.status === "paused" ? "resume" : "pause");
+  else if (b.id === "btn-token") ask("重置访问令牌", "旧令牌会立即失效，已接入的 Claude Code、Codex 都要换成新令牌。", "重置令牌", true, function () { return act("reset_token"); });
+  else if (b.id === "btn-viewkey") ask("重置远程查看链接", "旧链接会立即失效，已经打开的页面也会断开。", "重置链接", true, function () { return act("reset_view_key"); });
+  else if (b.id === "btn-tunnel-cfg") { tunnelKind = S.tunnelKind; openTunnelDialog(); }
+  else if (b.id === "btn-workdir") dialog("工作目录",
+    '<div class="mx-field"><label for="wd">文件夹路径</label><input class="mx-input" id="wd" value="' + esc(S.workdir) + '"></div>' +
+    '<div class="dlg-desc">不存在会自动新建；只读和工作目录两档下，AI 只能碰这个文件夹</div>',
+    "保存", false, function () { return act("set_workdir", $("wd").value); });
+  else if (b.id === "sw-awake") act("set_keep_awake", !S.keepAwake);
+  else if (b.id === "sw-open") act("set_open_panel", !S.openPanel);
+  else if (b.id === "btn-tunnel") {
+    if (S.tunnelKind === "cf-quick") ask("换一个隧道地址", "旧地址会失效，客户端要换成新地址。", "换地址", false, function () { return act("restart_tunnel"); });
+    else act("restart_tunnel");
+  }
+});
+$("dlg").addEventListener("click", function (e) { if (e.target === this) closeDlg(); });
+document.addEventListener("keydown", function (e) {
+  if ($("dlg").hidden) return;
+  if (e.key === "Escape") closeDlg();
+  if (e.key === "Enter" && e.target.tagName === "INPUT") $("dlg-ok").click();
+});
+window.addEventListener("hashchange", route);
+window.addEventListener("resize", function () { if (S) render(); });
+
+route();
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>

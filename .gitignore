@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+.env
+memory.md
+src/panel-html.ts
+.DS_Store
+video/node_modules/
+video/build/
+video/public/shots/
+video/public/audio/
+video/out/

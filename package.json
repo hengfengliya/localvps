@@ -1,0 +1,52 @@
+{
+  "name": "localvps",
+  "version": "0.1.0",
+  "description": "Turn your Mac/Windows PC into a VPS for AI agents: remote MCP server with built-in Cloudflare tunnel, token auth and a dashboard.",
+  "type": "module",
+  "bin": {
+    "localvps": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/embed.mjs && tsc",
+    "start": "node dist/cli.js",
+    "dev": "npm run build && node dist/cli.js",
+    "build:bin": "node scripts/embed.mjs && bun build src/cli.ts --compile --target=bun-darwin-arm64 --outfile release/localvps-macos-arm64 && bun build src/cli.ts --compile --target=bun-darwin-x64 --outfile release/localvps-macos-x64 && bun build src/cli.ts --compile --target=bun-windows-x64 --outfile release/localvps-windows-x64.exe"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "codex",
+    "remote",
+    "tunnel",
+    "vps"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "systeminformation": "^5.33.19",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hengfengliya/localvps.git"
+  },
+  "homepage": "https://github.com/hengfengliya/localvps",
+  "bugs": {
+    "url": "https://github.com/hengfengliya/localvps/issues"
+  },
+  "author": "hengfengliya"
+}
