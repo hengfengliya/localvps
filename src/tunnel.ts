@@ -64,7 +64,7 @@ export function startTunnel(cfg: Config, ev: TunnelEvents): { stop: () => void; 
   const args =
     cfg.tunnel === "cf-quick"
       ? ["tunnel", "--no-autoupdate", "--url", `http://127.0.0.1:${cfg.port}`]
-      : ["tunnel", "--no-autoupdate", "run", "--token", cfg.cfTunnelToken];
+      : ["tunnel", "--no-autoupdate", "run", "--url", `http://127.0.0.1:${cfg.port}`, "--token", cfg.cfTunnelToken];
 
   let stopped = false;
   let child: ReturnType<typeof spawn> | undefined;

@@ -93,6 +93,10 @@ export function startServer(cfg: Config): Promise<http.Server> {
     }
   });
 
+  runtime.closers.push(() => {
+    httpServer.close();
+    httpServer.closeAllConnections();
+  });
   return new Promise((resolve, reject) => {
     httpServer.once("error", reject);
     httpServer.listen(cfg.port, cfg.host, () => resolve(httpServer));

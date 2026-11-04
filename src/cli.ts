@@ -5,6 +5,8 @@ import { initMachine, startPanel } from "./panel.js";
 import { logError, runtime, startSampler } from "./runtime.js";
 import { startServer } from "./server.js";
 import { startTunnel } from "./tunnel.js";
+import { canSelfUpdate, checkUpdate, cleanupOld, installUpdate } from "./update.js";
+import { VERSION } from "./version.js";
 
 const LEVEL = {
   readonly: "只读：仅能读取工作目录",
@@ -57,8 +59,22 @@ ${cfg.tunnel === "cf-quick" ? "\n注意：临时隧道每次启动地址都会�
 `);
 }
 
+// 自我更新：换好文件后关掉自己的服务，在同一个窗口里起新版本，本进程只负责转发信号、等它退出
+function restartInto(exe: string, stops: (() => void)[]) {
+  stops.forEach((s) => s());
+  runtime.closers.forEach((c) => c());
+  console.log("\n已更新，正在启动新版本…\n");
+  setTimeout(() => {
+    const child = spawn(exe, [], { stdio: "inherit", env: process.env });
+    child.on("exit", (code) => process.exit(code ?? 0));
+    for (const sig of ["SIGINT", "SIGTERM"] as const) process.removeAllListeners(sig).on(sig, () => child.kill(sig));
+  }, 1000);
+}
+
 async function main() {
+  cleanupOld();
   const cfg = loadConfig();
+  console.log(`localvps ${VERSION}`);
   await initMachine(cfg);
   await startServer(cfg);
   startSampler();
@@ -109,6 +125,38 @@ async function main() {
   };
   await runtime.applyTunnel();
   const stops = [() => tunnel?.stop(), () => stopAwake?.()];
+
+  runtime.checkUpdate = async () => {
+    if (runtime.update.status === "updating") return;
+    runtime.update.status = "checking";
+    try {
+      runtime.update.latest = await checkUpdate();
+      runtime.update.status = "idle";
+      runtime.update.error = "";
+      if (runtime.update.latest) console.log(`发现新版本 ${runtime.update.latest.version}，在控制台点「更新」即可。`);
+    } catch (e) {
+      // 连不上 GitHub 很常见，不打扰，只在设置里显示
+      runtime.update.status = "error";
+      runtime.update.error = `检查更新失败：${e instanceof Error ? e.message : e}`;
+    }
+    runtime.update.checkedAt = Date.now();
+  };
+  runtime.runUpdate = async () => {
+    const rel = runtime.update.latest;
+    if (!rel || !canSelfUpdate()) return;
+    runtime.update.status = "updating";
+    runtime.update.error = "";
+    console.log(`正在下载新版本 ${rel.version}…`);
+    try {
+      restartInto(await installUpdate(rel), stops);
+    } catch (e) {
+      runtime.update.status = "error";
+      runtime.update.error = e instanceof Error ? e.message : String(e);
+      logError(`更新失败：${runtime.update.error}`);
+    }
+  };
+  setTimeout(() => void runtime.checkUpdate(), 5000);
+  setInterval(() => void runtime.checkUpdate(), 6 * 3600_000).unref();
 
   const exit = () => {
     stops.forEach((s) => s());

@@ -39,6 +39,15 @@ export const runtime = {
   restartTunnel: () => {},
   applyTunnel: async () => {}, // 隧道配置改了之后按新配置重开
   setKeepAwake: (_on: boolean) => {},
+  closers: [] as (() => void)[], // 自我更新重启前要关掉的服务
+  update: {
+    latest: null as null | { version: string; notes: string; page: string; assets: Record<string, string> },
+    status: "idle" as "idle" | "checking" | "updating" | "error",
+    error: "",
+    checkedAt: 0,
+  },
+  checkUpdate: async () => {},
+  runUpdate: async () => {},
 };
 
 export function audit(homeDir: string, entry: Omit<LogEntry, "time">) {

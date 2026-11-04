@@ -2,6 +2,11 @@
 import fs from "node:fs";
 
 const read = (p) => fs.readFileSync(new URL(p, import.meta.url), "utf8");
+const { version } = JSON.parse(read("../package.json"));
+fs.writeFileSync(
+  new URL("../src/version.ts", import.meta.url),
+  `// 由 scripts/embed.mjs 从 package.json 生成，勿手改\nexport const VERSION = ${JSON.stringify(version)};\n`,
+);
 const favicon = fs.readFileSync(new URL("../src/favicon.png", import.meta.url)).toString("base64");
 const html = read("../src/panel.html")
   .replace("<!-- favicon -->", `<link rel="icon" type="image/png" href="data:image/png;base64,${favicon}">`)

@@ -14,7 +14,7 @@
   .side-status .host { font-size: 12px; line-height: 17px; color: var(--ink-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .page { flex: 1; min-width: 0; max-width: var(--page-max); box-sizing: border-box; padding: 56px 40px 48px; }
   .mx-head { margin-bottom: var(--space-6); }
-  #tunnel-err { margin: calc(-1 * var(--space-4)) 0 var(--space-6); overflow-wrap: anywhere; }
+  #tunnel-err, #update-bar { margin: calc(-1 * var(--space-4)) 0 var(--space-6); overflow-wrap: anywhere; }
   [hidden] { display: none !important; }
   a.mx-btn { text-decoration: none; }
   code, .mono { font-family: var(--font-mono); font-size: 13px; }
@@ -83,6 +83,10 @@
 <main class="page">
   <header class="mx-head"><h1 class="mx-title" id="title">概览</h1></header>
   <div class="mx-error" id="tunnel-err" hidden></div>
+  <div class="mx-notice local-only" id="update-bar" hidden>
+    <span id="update-text"></span>
+    <button class="mx-btn mx-btn--secondary mx-btn--sm" id="btn-update">更新并重启</button>
+  </div>
 
   <div class="view" id="v-overview">
     <section class="mx-sec">
@@ -113,6 +117,7 @@
         <div><dt>隧道</dt><dd id="f-tunnel">—</dd></div>
         <div><dt>已运行</dt><dd class="mx-num" id="f-uptime">—</dd></div>
         <div><dt>启动时间</dt><dd class="mx-num" id="f-started">—</dd></div>
+        <div><dt>版本</dt><dd class="mx-num" id="f-ver">—</dd></div>
       </dl>
     </section>
   </div>
@@ -208,6 +213,10 @@
         <div class="mx-setting-main"><div class="mx-setting-name">启动时打开控制台</div></div>
         <button class="mx-switch" role="switch" id="sw-open" aria-label="启动时打开控制台"></button>
       </div>
+      <div class="mx-setting">
+        <div class="mx-setting-main"><div class="mx-setting-name">版本</div><div class="mx-setting-desc" id="ver-desc">—</div></div>
+        <button class="mx-btn mx-btn--secondary mx-btn--sm" id="btn-check">检查更新</button>
+      </div>
     </section>
   </div>
 </main>
@@ -226,7 +235,7 @@
 <script>
 var REMOTE = location.pathname.indexOf("/view") === 0;
 var API = REMOTE ? "/view/api" : "/api";
-var S = null, client = "claude", showToken = false, pending = null, tunnelKind = "cf-quick";
+var S = null, client = "claude", showToken = false, pending = null, tunnelKind = "cf-quick", restarting = false;
 if (REMOTE) document.body.classList.add("remote");
 var PAGES = { overview: "概览", connect: "连接", logs: "调用日志", settings: "设置" };
 var STATUS = {
@@ -330,6 +339,7 @@ function render() {
   $("f-tunnel").textContent = TUNNEL[S.tunnelKind];
   $("f-uptime").textContent = duration(Date.now() - S.startedAt);
   $("f-started").textContent = fullTime(S.startedAt);
+  $("f-ver").textContent = S.version;
   if (last) {
     var dp = last.diskUsed / last.diskTotal * 100, tx = split(last.tx), rx = split(last.rx);
     stat("st-cpu", last.cpu.toFixed(1), "%");
@@ -375,6 +385,27 @@ function render() {
   $("s-workdir").textContent = S.workdir;
   $("sw-awake").setAttribute("aria-checked", String(S.keepAwake));
   $("sw-open").setAttribute("aria-checked", String(S.openPanel));
+  renderUpdate();
+}
+
+function renderUpdate() {
+  var u = S.update, v = u.latest && u.latest.version, bar = $("update-bar"), btn = $("btn-update");
+  bar.hidden = !v;
+  if (v) {
+    btn.hidden = !u.canSelfUpdate;
+    btn.disabled = u.status === "updating";
+    btn.textContent = u.status === "error" ? "重试" : "更新并重启";
+    $("update-text").textContent =
+      u.status === "updating" ? "正在下载新版本 " + v + "，装好会自动重启" :
+      u.status === "error" ? u.error :
+      "新版本 " + v + " 可用" + (u.canSelfUpdate ? "" : "，从源码运行的话 git pull 后重新构建");
+  }
+  $("ver-desc").textContent = "当前 " + S.version + " · " + (
+    u.status === "checking" ? "正在检查" :
+    v ? "有新版本 " + v :
+    u.status === "error" ? u.error :
+    u.checkedAt ? "已是最新，" + clock(u.checkedAt) + " 检查过" : "还没检查");
+  $("btn-check").disabled = u.status === "checking" || u.status === "updating";
 }
 
 function renderLogs() {
@@ -398,8 +429,14 @@ function renderLogs() {
 }
 
 function load() {
-  return fetch(API + "/state").then(function (r) { if (!r.ok) throw r; return r.json(); }).then(function (d) { S = d; render(); })
-    .catch(function () { $("status").className = "mx-status mx-status--risk"; $("status").innerHTML = '<span class="txt">已断开</span>'; });
+  return fetch(API + "/state").then(function (r) { if (!r.ok) throw r; return r.json(); }).then(function (d) {
+      if (restarting && S && d.version !== S.version) restarting = false;
+      S = d; render();
+    })
+    .catch(function () {
+      $("status").className = "mx-status " + (restarting ? "mx-status--warn" : "mx-status--risk");
+      $("status").innerHTML = '<span class="txt">' + (restarting ? "正在重启" : "已断开") + "</span>";
+    });
 }
 
 function act(action, value) {
@@ -488,6 +525,8 @@ document.addEventListener("click", function (e) {
     '<div class="mx-field"><label for="wd">文件夹路径</label><input class="mx-input" id="wd" value="' + esc(S.workdir) + '"></div>' +
     '<div class="dlg-desc">不存在会自动新建；只读和工作目录两档下，AI 只能碰这个文件夹</div>',
     "保存", false, function () { return act("set_workdir", $("wd").value); });
+  else if (b.id === "btn-update") { restarting = true; act("run_update"); }
+  else if (b.id === "btn-check") act("check_update").then(function () { setTimeout(load, 2500); });
   else if (b.id === "sw-awake") act("set_keep_awake", !S.keepAwake);
   else if (b.id === "sw-open") act("set_open_panel", !S.openPanel);
   else if (b.id === "btn-tunnel") {

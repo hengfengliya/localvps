@@ -7,6 +7,8 @@ import si from "systeminformation";
 import { type Config, expandHome, newViewKey, type Permission, saveEnv } from "./config.js";
 import html from "./panel-html.js";
 import { runtime } from "./runtime.js";
+import { canSelfUpdate } from "./update.js";
+import { VERSION } from "./version.js";
 
 export { html };
 
@@ -23,6 +25,7 @@ export function buildState(cfg: Config, remote: boolean) {
   const todayLogs = runtime.logs.filter((l) => new Date(l.time).toDateString() === today);
   const base = {
     remote,
+    version: VERSION,
     machine,
     startedAt: runtime.startedAt,
     status: runtime.paused ? "paused" : runtime.tunnel,
@@ -49,6 +52,13 @@ export function buildState(cfg: Config, remote: boolean) {
     hasCfToken: !!cfg.cfTunnelToken,
     keepAwake: cfg.keepAwake,
     openPanel: cfg.openPanel,
+    update: {
+      latest: runtime.update.latest && { version: runtime.update.latest.version, notes: runtime.update.latest.notes, page: runtime.update.latest.page },
+      status: runtime.update.status,
+      error: runtime.update.error,
+      checkedAt: runtime.update.checkedAt,
+      canSelfUpdate: canSelfUpdate(),
+    },
   };
 }
 
@@ -123,6 +133,15 @@ function apply(cfg: Config, action: string, v: any): string | undefined {
       saveEnv(cfg.envFile, "KEEP_AWAKE", String(cfg.keepAwake));
       runtime.setKeepAwake(cfg.keepAwake);
       return;
+    case "check_update":
+      void runtime.checkUpdate();
+      return;
+    case "run_update":
+      if (!runtime.update.latest) return "没有可用的新版本";
+      if (!canSelfUpdate()) return "从源码运行时不能自动更新，git pull 后重新构建";
+      // 先把这次请求答完，再开始下载和重启
+      setTimeout(() => void runtime.runUpdate(), 300);
+      return;
     case "set_open_panel":
       cfg.openPanel = !!v;
       saveEnv(cfg.envFile, "OPEN_PANEL", String(cfg.openPanel));
@@ -157,6 +176,10 @@ export async function startPanel(cfg: Config): Promise<string> {
     json(res, 404, { error: "not found" });
   });
 
+  runtime.closers.push(() => {
+    server.close();
+    server.closeAllConnections();
+  });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(cfg.panelPort, "127.0.0.1", () => resolve());
