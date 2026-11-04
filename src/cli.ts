@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { loadConfig, type Config } from "./config.js";
 import { initMachine, startPanel } from "./panel.js";
-import { logError, runtime, startSampler } from "./runtime.js";
+import { logError, runtime, startSampler, stopSampler } from "./runtime.js";
 import { startServer } from "./server.js";
 import { startTunnel } from "./tunnel.js";
 import { canSelfUpdate, checkUpdate, cleanupOld, installUpdate, rollback } from "./update.js";
@@ -59,16 +62,20 @@ ${cfg.tunnel === "cf-quick" ? "\n注意：临时隧道每次启动地址都会�
 `);
 }
 
-// 自我更新：换好文件后关掉自己的服务，在同一个窗口里起新版本，本进程只负责转发信号、等它退出。
-// 新版本 20 秒内就异常退出，换回旧文件再起一次，免得机器没人管。
+// 自我更新后重启。新版本不再弹浏览器（页面已经开着，会自己重连）。
 function restartInto(exe: string, stops: (() => void)[]) {
   stops.forEach((s) => s());
   runtime.closers.forEach((c) => c());
+  stopSampler();
   console.log("\n已更新，正在启动新版本…\n");
+  const env = { ...process.env, LOCALVPS_OPEN_PANEL: "false" };
+  if (process.platform === "win32") return restartWindows(exe, env);
+
+  // macOS：同一个终端里起新版本，本进程只转发信号、等它退出；20 秒内异常退出就换回旧文件
   let child: ReturnType<typeof spawn>;
   const launch = (rolledBack: boolean) => {
     const startedAt = Date.now();
-    child = spawn(exe, [], { stdio: "inherit", env: process.env });
+    child = spawn(exe, [], { stdio: "inherit", env });
     child.on("error", (e) => logError(`启动新版本失败：${e.message}`));
     child.on("exit", (code) => {
       if (!rolledBack && code !== 0 && Date.now() - startedAt < 20_000 && rollback(exe)) {
@@ -82,6 +89,39 @@ function restartInto(exe: string, stops: (() => void)[]) {
   setTimeout(() => launch(false), 1000);
 }
 
+/**
+ * Windows：本进程直接拉起新版本，新进程会继承本进程的端口句柄，端口永远放不掉。
+ * 改成交给一个独立的 PowerShell 脚本：等本进程完全退出，再用 Start-Process 起新版本（不继承句柄，开在新窗口），
+ * 新版本 20 秒内异常退出就换回旧文件再起。
+ */
+function restartWindows(exe: string, env: NodeJS.ProcessEnv) {
+  const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
+  const dir = path.dirname(exe);
+  const script = [
+    `Wait-Process -Id ${process.pid} -Timeout 30 -ErrorAction SilentlyContinue`,
+    `Start-Sleep -Seconds 1`,
+    `$p = Start-Process -FilePath ${q(exe)} -WorkingDirectory ${q(dir)} -PassThru`,
+    `Start-Sleep -Seconds 20`,
+    `if ($p.HasExited -and $p.ExitCode -ne 0 -and (Test-Path ${q(exe + ".old")})) {`,
+    `  Move-Item -Force ${q(exe)} ${q(exe + ".failed")}`,
+    `  Move-Item -Force ${q(exe + ".old")} ${q(exe)}`,
+    `  Add-Content -Encoding UTF8 (Join-Path $env:USERPROFILE '.localvps\error.log') "$(Get-Date -Format o) 新版本启动后马上退出了（退出码 $($p.ExitCode)），已换回旧版本"`,
+    `  Start-Process -FilePath ${q(exe)} -WorkingDirectory ${q(dir)}`,
+    `}`,
+  ].join("\r\n");
+  const file = path.join(os.tmpdir(), `localvps-restart-${process.pid}.ps1`);
+  fs.writeFileSync(file, "\ufeff" + script);
+  // 第一层只负责再起一个干净的 PowerShell 跑脚本，然后马上退出，不长时间攥着继承来的句柄
+  spawn(
+    "powershell.exe",
+    ["-NoProfile", "-WindowStyle", "Hidden", "-Command",
+      `Start-Process powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',${q(`"${file}"`)}`],
+    { detached: true, stdio: "ignore", windowsHide: true, env },
+  ).unref();
+  console.log("新版本会在新窗口里启动，这个窗口马上关闭。");
+  setTimeout(() => process.exit(0), 500);
+}
+
 async function main() {
   if (process.argv.includes("--version")) {
     console.log(VERSION);
@@ -89,20 +129,21 @@ async function main() {
   }
   const cfg = loadConfig();
   console.log(`localvps ${VERSION}`);
+  // 常驻的后台进程（监控用的 PowerShell、防休眠）先起，再开端口：
+  // Windows 上开端口之后才起的子进程可能继承监听句柄，退出更新时端口就放不掉
   await initMachine(cfg);
-  await startServer(cfg);
   startSampler();
-  const panel = await startPanel(cfg);
-  const local = `http://${cfg.host === "0.0.0.0" ? "127.0.0.1" : cfg.host}:${cfg.port}`;
-  console.log(`本地服务已启动：${local}\n控制台：${panel}`);
-  if (cfg.openPanel) openBrowser(panel);
-
   let stopAwake: (() => void) | undefined;
   runtime.setKeepAwake = (on) => {
     stopAwake?.();
     stopAwake = on ? keepAwake() : undefined;
   };
   runtime.setKeepAwake(cfg.keepAwake);
+  await startServer(cfg);
+  const panel = await startPanel(cfg);
+  const local = `http://${cfg.host === "0.0.0.0" ? "127.0.0.1" : cfg.host}:${cfg.port}`;
+  console.log(`本地服务已启动：${local}\n控制台：${panel}`);
+  if (cfg.openPanel) openBrowser(panel);
 
   // 隧道可以在面板里换模式，换了就停掉旧的、按新配置重开
   let tunnel: { stop: () => void; restart: () => void } | undefined;

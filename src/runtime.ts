@@ -94,6 +94,10 @@ export async function waitForPort(port: number, host: string, timeoutMs = 30_000
   }
 }
 
+export function stopSampler() {
+  if (process.platform === "win32") si.powerShellRelease();
+}
+
 export function startSampler() {
   if (process.platform === "win32") si.powerShellStart();
   const diskPath = os.homedir();
