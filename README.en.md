@@ -65,6 +65,7 @@ localvps packs all of that into one file: **run it, and your computer is the VPS
 - **Remote view**: a read-only link to watch this computer from another device; a leaked link only lets someone look
 - **One-click controls**: pause AI calls, reset the token, get a new tunnel URL
 - **Stays awake**: prevents sleep while running, and stops doing so on exit
+- **One-click updates**: the dashboard tells you when a new version is out; one click downloads, verifies and swaps it, keeping your token and settings
 
 ## Getting started
 
@@ -171,6 +172,10 @@ cloudflared needs outbound access to Cloudflare on port 7844. Proxies like Clash
 ```yaml
 - DOMAIN-SUFFIX,argotunnel.com,DIRECT
 ```
+
+**With a fixed domain, some MCP clients get 403**
+
+If your Cloudflare zone has Bot Fight Mode or Browser Integrity Check on, requests from scripts such as Python clients are blocked (error 1010). Claude Code and Codex are not affected. To allow them, add a WAF skip rule for the subdomain.
 
 **macOS says the developer can't be verified**
 

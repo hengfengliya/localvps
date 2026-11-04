@@ -5,6 +5,7 @@ import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { type Config, expandHome } from "./config.js";
+import { VERSION } from "./version.js";
 
 const MAX_READ = 256 * 1024;
 const MAX_OUTPUT = 30_000;
@@ -100,7 +101,7 @@ async function realpathLoose(abs: string): Promise<string> {
 export function buildServer(cfg: Config, audit: (entry: object) => void): McpServer {
   const shell = process.platform === "win32" ? "PowerShell" : "bash/zsh";
   const server = new McpServer(
-    { name: "localvps", version: "0.1.2" },
+    { name: "localvps", version: VERSION },
     {
       instructions:
         `This MCP server runs on a ${os.type()} ${os.release()} (${os.arch()}) machine, host "${os.hostname()}". ` +
