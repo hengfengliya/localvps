@@ -14,9 +14,10 @@ export interface Release {
   assets: Record<string, string>; // 文件名 → 下载地址
 }
 
-/** 单文件版才能自己换自己；用 node 跑源码时只提示 */
+/** 单文件版才能自己换自己；用 node 跑源码时只提示。Mac App 里的程序也不自己换（会破坏 App 签名），下载新版 App 替换 */
+export const inApp = () => process.env.LOCALVPS_APP === "1";
 export const canSelfUpdate = () =>
-  /localvps/i.test(path.basename(process.execPath)) && (process.platform === "darwin" || process.platform === "win32");
+  !inApp() && /localvps/i.test(path.basename(process.execPath)) && (process.platform === "darwin" || process.platform === "win32");
 
 function assetName(): string {
   if (process.platform === "win32") return "localvps-windows-x64.exe";

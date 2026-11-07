@@ -30,9 +30,18 @@ mv -f "$TMP/localvps" "$DIR/localvps"
 chmod +x "$DIR/localvps"
 echo "已安装 / Installed: $DIR/localvps"
 
+# 加进 PATH，以后新开终端输入 localvps 就能启动
 case ":$PATH:" in
   *":$DIR:"*) ;;
-  *) echo "提示：把 $DIR 加进 PATH，以后输入 localvps 就能启动 / Tip: add $DIR to your PATH" ;;
+  *)
+    RC="$HOME/.zshrc"
+    case "$SHELL" in */bash) RC="$HOME/.bash_profile" ;; esac
+    LINE="export PATH=\"$DIR:\$PATH\""
+    if ! grep -qsF "$LINE" "$RC"; then
+      printf '\n# localvps\n%s\n' "$LINE" >> "$RC"
+      echo "已把 $DIR 加进 PATH（$RC），新开的终端里输入 localvps 就能启动 / Added to PATH in $RC"
+    fi
+    ;;
 esac
 
 echo

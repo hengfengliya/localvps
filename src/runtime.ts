@@ -48,6 +48,8 @@ export const runtime = {
     error: "",
     checkedAt: 0,
   },
+  hub: { error: "", reportedAt: 0 }, // 邀请服务上报的结果，控制台显示
+  reportHub: () => {}, // 令牌、权限、地址变了就马上报一次
   checkUpdate: async () => {},
   runUpdate: async () => {},
 };

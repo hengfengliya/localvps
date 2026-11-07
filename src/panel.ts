@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import si from "systeminformation";
 import { type Config, expandHome, newViewKey, type Permission, saveEnv } from "./config.js";
+import { redeemInvite, unbindHub } from "./hub.js";
 import html from "./panel-html.js";
 import { runtime, waitForPort } from "./runtime.js";
 import { canSelfUpdate } from "./update.js";
@@ -13,6 +14,8 @@ import { VERSION } from "./version.js";
 export { html };
 
 let machine = { host: os.hostname(), os: "", arch: os.arch(), cpu: "", cores: os.cpus().length };
+
+export const machineInfo = () => machine;
 
 export async function initMachine(cfg: Config) {
   const [osInfo, cpu] = await Promise.all([si.osInfo(), si.cpu()]);
@@ -50,6 +53,7 @@ export function buildState(cfg: Config, remote: boolean) {
     port: cfg.port,
     publicUrl: cfg.publicUrl,
     hasCfToken: !!cfg.cfTunnelToken,
+    hub: { bound: !!cfg.hubCode, url: cfg.hubUrl, code: cfg.hubCode, error: runtime.hub.error, reportedAt: runtime.hub.reportedAt },
     keepAwake: cfg.keepAwake,
     openPanel: cfg.openPanel,
     exePath: canSelfUpdate() ? process.execPath : "",
@@ -76,11 +80,12 @@ export function json(res: http.ServerResponse, status: number, data: unknown) {
 }
 
 // 面板上的每个操作；返回错误文案或 undefined
-function apply(cfg: Config, action: string, v: any): string | undefined {
+async function apply(cfg: Config, action: string, v: any): Promise<string | undefined> {
   switch (action) {
     case "pause":
     case "resume":
       runtime.paused = action === "pause";
+      runtime.reportHub();
       return;
     case "restart_tunnel":
       if (cfg.tunnel === "none") return "没有开隧道";
@@ -90,6 +95,7 @@ function apply(cfg: Config, action: string, v: any): string | undefined {
     case "reset_token":
       cfg.token = "lvps_" + randomBytes(24).toString("base64url");
       saveEnv(cfg.envFile, "ACCESS_TOKEN", cfg.token);
+      runtime.reportHub();
       return;
     case "reset_view_key":
       cfg.viewKey = newViewKey();
@@ -99,6 +105,7 @@ function apply(cfg: Config, action: string, v: any): string | undefined {
       if (!["readonly", "workspace", "full"].includes(v)) return "权限只有只读、工作目录、完全权限三档";
       cfg.permission = v as Permission;
       saveEnv(cfg.envFile, "PERMISSION", v);
+      runtime.reportHub();
       return;
     case "set_workdir": {
       const dir = path.resolve(expandHome(String(v || "").trim()));
@@ -127,9 +134,12 @@ function apply(cfg: Config, action: string, v: any): string | undefined {
       }
       cfg.tunnel = kind;
       saveEnv(cfg.envFile, "TUNNEL", kind);
+      unbindHub(cfg);
       runtime.applyTunnel();
       return;
     }
+    case "redeem_invite":
+      return redeemInvite(cfg, String(v || ""));
     case "set_keep_awake":
       cfg.keepAwake = !!v;
       saveEnv(cfg.envFile, "KEEP_AWAKE", String(cfg.keepAwake));
@@ -171,7 +181,7 @@ export async function startPanel(cfg: Config): Promise<string> {
     if (req.method === "POST" && url.pathname === "/api/action") {
       if (req.headers["x-localvps"] !== "1") return json(res, 403, { error: "forbidden" });
       const { action, value } = await readBody(req).catch(() => ({}));
-      const error = apply(cfg, action, value);
+      const error = await apply(cfg, action, value);
       return error ? json(res, 400, { error }) : json(res, 200, { ok: true });
     }
 

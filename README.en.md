@@ -27,7 +27,9 @@ Claude Code and Codex can then read, write and run commands on this machine — 
 
 ## Install in one line
 
-**macOS**
+**macOS app**: download [localvps-macos.dmg](https://github.com/hengfengliya/localvps/releases/latest/download/localvps-macos.dmg), drag it into Applications and open it. It lives in the menu bar; click the icon for the dashboard and tick "Launch at login" in its menu. Signed and notarized by Apple.
+
+**macOS command line**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hengfengliya/localvps/main/install.sh | sh
@@ -149,10 +151,13 @@ Remote view is read-only: permissions, token and tunnel can only be changed on t
 | Tunnel | What you need | URL |
 |---|---|---|
 | Quick (default) | Nothing | Changes on every start |
+| Invite code | An invite link from someone running an invite service | Stable |
 | Fixed domain | A Cloudflare account and a domain on Cloudflare | Stable |
 | None | Nothing | Local machine or LAN only — pairs well with Tailscale |
 
 For a fixed domain, open Settings → Tunnel → Change and paste your Cloudflare tunnel token and domain; the dialog walks you through getting them.
+
+Invite codes are for looking after a friend's or family member's computer: you run an invite service (a Cloudflare Worker, see [server/README.md](server/README.md)) and send them an invite link from its admin page. They paste it under Tunnel → Invite code; their machine gets a stable `name.your-domain` address and reports its address, online status, permission level and access token to your invite service, where you copy the connect command. They can unbind any time by switching to another tunnel mode, and you can revoke the invite from the admin page.
 
 ## Security
 
@@ -224,7 +229,8 @@ The call log is also written to `~/.localvps/audit.log`. To use your own cloudfl
 - [x] Cloudflare quick tunnel and fixed domain
 - [x] Dashboard, call log, remote view
 - [ ] `npx localvps`
-- [ ] Start at login
+- [x] macOS menu bar app with launch at login
+- [x] Invite codes: stable addresses handed out and monitored from one admin page
 - [ ] Standalone Linux build
 - [ ] English dashboard UI
 - [ ] OAuth, for Claude on the web and mobile

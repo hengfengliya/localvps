@@ -1,0 +1,17 @@
+// localvps 邀请服务。部署步骤见 README.md。
+{
+  "name": "localvps-hub",
+  "main": "worker.js",
+  // 管理页、Beayy 样式当文本模块打进 Worker
+  "rules": [{ "type": "Text", "globs": ["**/*.html", "**/*.css"], "fallthrough": true }],
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "localvps.beayy.com", "custom_domain": true }],
+  "vars": {
+    "DOMAIN": "beayy.com",
+    "ZONE_ID": "64f35b6b59b9fccc14aa36e39b686507",
+    "ACCOUNT_ID": "eb948869b345b06dd59e86bf89531019"
+  },
+  "kv_namespaces": [{ "binding": "KV", "id": "c236cf90cd0e49b086be113c346a3466" }]
+}

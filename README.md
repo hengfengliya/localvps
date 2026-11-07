@@ -27,7 +27,9 @@ Claude Code、Codex 不管在哪儿跑，都能远程在这台电脑上读写文
 
 ## 一行安装
 
-**macOS**
+**macOS App**：下载 [localvps-macos.dmg](https://github.com/hengfengliya/localvps/releases/latest/download/localvps-macos.dmg)，拖进「应用程序」后打开。常驻菜单栏，点图标打开控制台，菜单里勾「开机自动启动」。已签名并经苹果公证，双击不会被拦。
+
+**macOS 命令行**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hengfengliya/localvps/main/install.sh | sh
@@ -147,10 +149,13 @@ localvps 在本机起一个 MCP 服务，cloudflared 从你的电脑主动连到
 | 隧道 | 要准备什么 | 地址 |
 |---|---|---|
 | 临时地址（默认） | 什么都不用 | 每次启动会变 |
+| 邀请码 | 一条邀请链接（向搭了邀请服务的人要） | 不变 |
 | 固定域名 | Cloudflare 账号和一个托管在 Cloudflare 的域名 | 不变 |
 | 不用隧道 | 什么都不用 | 只在本机或局域网，适合配合 Tailscale |
 
 固定域名在「设置 → 隧道 → 更改」里填 Cloudflare 隧道令牌和域名，弹层里有获取步骤。
+
+邀请码适合帮家人朋友远程打理电脑：你搭一个邀请服务（一个 Cloudflare Worker，见 [server/README.md](server/README.md)），在管理页给对方发一条邀请链接；对方在「隧道 → 邀请码」里粘贴，这台电脑就固定在 `名字.你的域名` 上，并定时向邀请服务上报地址、在线状态、权限和访问令牌，你在管理页一键复制接入命令。对方随时可以换回别的隧道模式解除绑定，你也可以在管理页收回。
 
 ## 安全
 
@@ -222,7 +227,8 @@ cloudflared 要出站访问 Cloudflare 的 7844 端口。开着 Clash、Surge �
 - [x] Cloudflare 临时隧道和固定域名
 - [x] 控制台、调用日志、远程查看
 - [ ] `npx localvps`
-- [ ] 开机自启
+- [x] Mac App：菜单栏常驻、开机自启
+- [x] 邀请码：一键分配固定域名，邀请方集中查看
 - [ ] Linux 单文件版
 - [ ] 控制台英文界面
 - [ ] OAuth 登录，接 Claude 网页版和手机版

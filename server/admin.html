@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>localvps 管理</title>
+<!-- beayy -->
+<style>
+  body { padding: 0; }
+  .page { max-width: var(--page-max); margin: 0 auto; box-sizing: border-box; padding: 56px 40px 48px; }
+  .top { margin-bottom: var(--space-6); display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); }
+  .top .mx-title { margin: 0; }
+  [hidden] { display: none !important; }
+  code, .mono { font-family: var(--font-mono); font-size: 13px; }
+  .new { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: flex-end; }
+  .new .mx-field { margin: 0; }
+  .seat { padding: var(--space-5) 0; border-bottom: 1px solid var(--line-2); }
+  .seat:last-child { border-bottom: 0; }
+  .seat-top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); }
+  .seat-name { font-weight: 600; color: var(--ink); }
+  .seat-note { color: var(--ink-3); font-size: 13px; margin-left: var(--space-2); font-weight: 400; }
+  .kv { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; gap: 6px var(--space-3); margin-top: var(--space-3); align-items: center; font-size: 13px; }
+  .kv dt { color: var(--ink-3); }
+  .kv dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+  .actions { display: flex; gap: var(--space-2); }
+  .mx-field-error:empty { display: none; }
+  @media (max-width: 760px) {
+    .page { padding: 24px 16px 40px; }
+    .kv { grid-template-columns: 72px minmax(0, 1fr); }
+    .kv .copy { grid-column: 2; justify-self: start; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <h1 class="mx-title">localvps 机器</h1>
+    <button class="mx-btn mx-btn--text mx-btn--sm" id="logout" hidden>退出</button>
+  </header>
+
+  <section class="mx-sec" id="login">
+    <div class="mx-field"><label for="key">管理密码</label><input class="mx-input" id="key" type="password" autocomplete="current-password"></div>
+    <div class="mx-field-error" id="login-err"></div>
+    <button class="mx-btn mx-btn--primary" id="btn-login">进入</button>
+  </section>
+
+  <div id="main" hidden>
+    <section class="mx-sec">
+      <div class="mx-sec-head"><h2>发邀请码</h2></div>
+      <div class="new">
+        <div class="mx-field"><label for="label">名字（地址前缀）</label><input class="mx-input" id="label" placeholder="sumo"></div>
+        <div class="mx-field"><label for="note">备注</label><input class="mx-input" id="note" placeholder="苏墨 · MacBook Air"></div>
+        <button class="mx-btn mx-btn--primary" id="btn-new">生成</button>
+      </div>
+      <div class="mx-field-error" id="new-err"></div>
+      <p class="mx-setting-desc">地址会是 <code>名字.beayy.com</code>。把生成的邀请链接发给对方，在 localvps「设置 → 网络 → 隧道」里选「邀请码」粘贴即可。</p>
+    </section>
+    <section class="mx-sec">
+      <div class="mx-sec-head"><h2>全部机器</h2></div>
+      <div id="seats"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+var KEY = "";
+try { KEY = localStorage.getItem("lv-admin") || ""; } catch (e) {}
+var SEATS = [];
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function pad(n) { return (n < 10 ? "0" : "") + n; }
+function when(t) {
+  if (!t) return "—";
+  var s = (Date.now() - t) / 1000;
+  if (s < 90) return "刚刚";
+  if (s < 3600) return Math.round(s / 60) + " 分钟前";
+  var d = new Date(t);
+  return (d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+var PERM = { readonly: "只读", workspace: "工作目录", full: "完全权限" };
+
+function api(method, path, body) {
+  return fetch("/admin/api/" + path, {
+    method: method, headers: { "content-type": "application/json", "x-admin-key": KEY },
+    body: body ? JSON.stringify(body) : undefined
+  }).then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(d.error || r.status); return d; }); });
+}
+
+function cmd(s) {
+  var r = s.report;
+  if (!r || !r.accessToken) return "";
+  return "claude mcp add --transport http " + s.label + " " + s.publicUrl + "/mcp --header \"Authorization: Bearer " + r.accessToken + "\"";
+}
+
+function render() {
+  if (!SEATS.length) { $("seats").innerHTML = '<p class="mx-setting-desc">还没有邀请码</p>'; return; }
+  $("seats").innerHTML = SEATS.map(function (s, i) {
+    var r = s.report || {};
+    var status = !s.redeemedAt ? ["未使用", ""] : s.online ? ["在线", "mx-status--ok"] : ["离线", "mx-status--risk"];
+    var row = function (k, v, copy) {
+      return "<dt>" + k + "</dt><dd>" + v + "</dd>" + (copy ? '<button class="mx-btn mx-btn--text mx-btn--sm copy" data-copy="' + copy + '" data-i="' + i + '">复制</button>' : "<span></span>");
+    };
+    return '<div class="seat"><div class="seat-top"><div><span class="seat-name">' + esc(s.label) + "</span>" +
+      (s.note ? '<span class="seat-note">' + esc(s.note) + "</span>" : "") + "</div>" +
+      '<div class="actions"><span class="mx-status ' + status[1] + '"><span class="txt">' + status[0] + "</span></span>" +
+      '<button class="mx-btn mx-btn--text mx-btn--sm" data-del="' + i + '">收回</button></div></div><dl class="kv">' +
+      row("地址", '<span class="mono">' + esc(s.publicUrl) + "/mcp</span>", "url") +
+      row("邀请链接", '<span class="mono">' + esc(s.invite) + "</span>", "invite") +
+      (s.redeemedAt
+        ? row("电脑", esc([r.name, r.os].filter(Boolean).join(" · ") || "—")) +
+          row("权限", esc(PERM[r.permission] || r.permission || "—") + (r.version ? " · v" + esc(r.version) : "")) +
+          row("令牌", r.accessToken ? '<span class="mono">' + esc(r.accessToken.slice(0, 9)) + "••••••••</span>" : "—", r.accessToken ? "token" : "") +
+          row("接入命令", r.accessToken ? '<span class="mono">claude mcp add …</span>' : "—", r.accessToken ? "cmd" : "") +
+          row("最近上报", when(r.at) + (s.tunnelStatus && s.tunnelStatus !== "healthy" ? " · 隧道 " + esc(s.tunnelStatus) : ""))
+        : "") +
+      "</dl></div>";
+  }).join("");
+}
+
+function load() {
+  return api("GET", "seats").then(function (d) {
+    SEATS = d.seats; $("login").hidden = true; $("main").hidden = false; $("logout").hidden = false; render();
+  });
+}
+
+document.addEventListener("click", function (e) {
+  var b = e.target.closest("button"); if (!b) return;
+  if (b.id === "btn-login") {
+    KEY = $("key").value;
+    load().then(function () { try { localStorage.setItem("lv-admin", KEY); } catch (e) {} })
+      .catch(function (err) { $("login-err").textContent = err.message; });
+  } else if (b.id === "logout") {
+    try { localStorage.removeItem("lv-admin"); } catch (e) {}
+    location.reload();
+  } else if (b.id === "btn-new") {
+    b.disabled = true; $("new-err").textContent = "";
+    api("POST", "seats", { label: $("label").value, note: $("note").value })
+      .then(function () { $("label").value = ""; $("note").value = ""; return load(); })
+      .catch(function (err) { $("new-err").textContent = err.message; })
+      .then(function () { b.disabled = false; });
+  } else if (b.dataset.copy) {
+    var s = SEATS[+b.dataset.i];
+    var text = { url: s.publicUrl + "/mcp", invite: s.invite, token: s.report && s.report.accessToken, cmd: cmd(s) }[b.dataset.copy];
+    navigator.clipboard.writeText(text).then(function () { b.textContent = "已复制"; setTimeout(function () { b.textContent = "复制"; }, 1500); });
+  } else if (b.dataset.del) {
+    var t = SEATS[+b.dataset.del];
+    if (!confirm("收回 " + t.label + "？隧道和域名 " + t.publicUrl + " 会被删掉，对方那台电脑会连不上。")) return;
+    api("DELETE", "seats/" + t.code).then(load).catch(function (err) { alert(err.message); });
+  }
+});
+$("key").addEventListener("keydown", function (e) { if (e.key === "Enter") $("btn-login").click(); });
+
+if (KEY) load().catch(function () { KEY = ""; });
+setInterval(function () { if (KEY && !$("main").hidden) load().catch(function () {}); }, 30000);
+</script>
+</body>
+</html>

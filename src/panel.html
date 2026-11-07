@@ -246,7 +246,8 @@ var TUNNEL = { "cf-quick": "临时地址 · 每次启动会变", cloudflare: "�
 var TUNNEL_DESC = {
   "cf-quick": "不用注册，每次启动换一个地址",
   cloudflare: "地址不变，需要 Cloudflare 账号和一个托管在 Cloudflare 的域名",
-  none: "只能在这台电脑或局域网里访问"
+  none: "只能在这台电脑或局域网里访问",
+  invite: "填邀请方发来的链接，自动分到一个固定地址。绑定后邀请方能看到这台电脑的地址、在线状态、权限和访问令牌，可以远程连接"
 };
 var PERM = {
   readonly: "只能读工作目录里的文件",
@@ -336,7 +337,7 @@ function render() {
   $("f-host").textContent = S.machine.host;
   $("f-os").textContent = S.machine.os + " · " + S.machine.arch;
   $("f-cpu").textContent = S.machine.cpu + " · " + S.machine.cores + " 核";
-  $("f-tunnel").textContent = TUNNEL[S.tunnelKind];
+  $("f-tunnel").textContent = S.hub && S.hub.bound ? "固定域名 · 邀请码分配" : TUNNEL[S.tunnelKind];
   $("f-uptime").textContent = duration(Date.now() - S.startedAt);
   $("f-started").textContent = fullTime(S.startedAt);
   $("f-ver").textContent = S.version;
@@ -379,7 +380,8 @@ function render() {
   var serving = S.status !== "paused";
   $("sw-serve").setAttribute("aria-checked", String(serving));
   $("pause-desc").textContent = serving ? "关掉后 AI 的调用都会被拒绝" : "已暂停，AI 的调用都会被拒绝";
-  $("tunnel-desc").textContent = S.tunnelKind === "cloudflare" ? "固定域名 · " + S.publicUrl.replace("https://", "") : TUNNEL[S.tunnelKind];
+  $("tunnel-desc").textContent = (S.tunnelKind === "cloudflare" ? (S.hub.bound ? "邀请码分配的固定域名 · " : "固定域名 · ") + S.publicUrl.replace("https://", "") : TUNNEL[S.tunnelKind]) +
+    (S.hub.error ? "（" + S.hub.error + "）" : "");
   $("btn-tunnel").hidden = S.tunnelKind === "none";
   $("btn-tunnel").textContent = S.tunnelKind === "cf-quick" ? "换地址" : "重连";
   $("s-workdir").textContent = S.workdir;
@@ -432,7 +434,7 @@ function renderLogs() {
 function load() {
   return fetch(API + "/state").then(function (r) { if (!r.ok) throw r; return r.json(); }).then(function (d) {
       if (restarting && S && d.version !== S.version) restarting = false;
-      S = d; render();
+      S = d; S.hub = S.hub || {}; render();
     })
     .catch(function () {
       $("status").className = "mx-status " + (restarting ? "mx-status--warn" : "mx-status--risk");
@@ -466,18 +468,22 @@ function tunnelBody() {
     "<li>在隧道的 Public Hostname 里加一个域名，服务填 <code>http://127.0.0.1:" + S.port + "</code></li>" +
     "<li>把这个域名填到上面，写成 <code>https://</code> 开头</li></ol>";
   return '<div class="mx-seg" id="tk">' +
-    ["cf-quick", "cloudflare", "none"].map(function (k) {
-      return '<button data-tk="' + k + '"' + (k === tunnelKind ? ' class="is-on"' : "") + ">" + { "cf-quick": "临时地址", cloudflare: "固定域名", none: "不用隧道" }[k] + "</button>";
+    ["cf-quick", "invite", "cloudflare", "none"].map(function (k) {
+      return '<button data-tk="' + k + '"' + (k === tunnelKind ? ' class="is-on"' : "") + ">" + { "cf-quick": "临时地址", invite: "邀请码", cloudflare: "固定域名", none: "不用隧道" }[k] + "</button>";
     }).join("") + "</div>" +
     '<div class="dlg-desc">' + TUNNEL_DESC[tunnelKind] + "</div>" +
     (tunnelKind === "cloudflare"
       ? '<div class="mx-field"><label for="tk-token">隧道令牌</label><input class="mx-input" id="tk-token" autocomplete="off" placeholder="' + (S.hasCfToken ? "已填写，留空不改" : "eyJh…") + '"></div>' +
         '<div class="mx-field"><label for="tk-url">域名</label><input class="mx-input" id="tk-url" placeholder="https://vps.example.com" value="' + esc(S.publicUrl || "") + '"></div>' +
         '<div class="mx-field"><label>怎么获取</label>' + steps + "</div>"
+      : tunnelKind === "invite"
+      ? '<div class="mx-field"><label for="tk-inv">邀请链接</label><input class="mx-input" id="tk-inv" autocomplete="off" placeholder="https://localvps.beayy.com/i/ABCD2345"></div>' +
+        (S.hub.bound ? '<div class="dlg-desc">已绑定邀请码 ' + esc(S.hub.code) + "，重新填会换成新的绑定</div>" : "")
       : "");
 }
 function openTunnelDialog() {
   dialog("隧道", tunnelBody(), "保存", false, function () {
+    if (tunnelKind === "invite") return act("redeem_invite", $("tk-inv").value);
     var v = { kind: tunnelKind };
     if (tunnelKind === "cloudflare") { v.token = $("tk-token").value; v.url = $("tk-url").value; }
     return act("set_tunnel", v);
@@ -521,7 +527,7 @@ document.addEventListener("click", function (e) {
   } else if (b.id === "sw-serve") act(S.status === "paused" ? "resume" : "pause");
   else if (b.id === "btn-token") ask("重置访问令牌", "旧令牌会立即失效，已接入的 Claude Code、Codex 都要换成新令牌。", "重置令牌", true, function () { return act("reset_token"); });
   else if (b.id === "btn-viewkey") ask("重置远程查看链接", "旧链接会立即失效，已经打开的页面也会断开。", "重置链接", true, function () { return act("reset_view_key"); });
-  else if (b.id === "btn-tunnel-cfg") { tunnelKind = S.tunnelKind; openTunnelDialog(); }
+  else if (b.id === "btn-tunnel-cfg") { tunnelKind = S.hub.bound ? "invite" : S.tunnelKind; openTunnelDialog(); }
   else if (b.id === "btn-workdir") dialog("工作目录",
     '<div class="mx-field"><label for="wd">文件夹路径</label><input class="mx-input" id="wd" value="' + esc(S.workdir) + '"></div>' +
     '<div class="dlg-desc">不存在会自动新建；只读和工作目录两档下，AI 只能碰这个文件夹</div>',

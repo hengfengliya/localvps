@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadConfig, type Config } from "./config.js";
+import { startHubReporter } from "./hub.js";
 import { initMachine, startPanel } from "./panel.js";
 import { logError, runtime, startSampler, stopSampler } from "./runtime.js";
 import { startServer } from "./server.js";
@@ -173,6 +174,7 @@ async function main() {
         runtime.tunnelError = "";
         runtime.publicUrl = url;
         printConnectInfo(cfg, url, panel);
+        runtime.reportHub();
       },
       onDown: () => {
         if (runtime.tunnel !== "error") runtime.tunnel = "connecting";
@@ -186,6 +188,7 @@ async function main() {
     });
   };
   await runtime.applyTunnel();
+  startHubReporter(cfg);
   const stops = [() => tunnel?.stop(), () => stopAwake?.()];
 
   runtime.checkUpdate = async () => {

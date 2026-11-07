@@ -15,6 +15,10 @@ export interface Config {
   tunnel: TunnelKind;
   cfTunnelToken: string;
   publicUrl: string;
+  // 邀请服务：填了邀请码后由它分配固定域名，这台电脑定时向它上报地址、权限和令牌
+  hubUrl: string;
+  hubCode: string;
+  hubSecret: string;
   port: number;
   host: string;
   keepAwake: boolean;
@@ -77,6 +81,9 @@ export function loadConfig(): Config {
     tunnel: pick("TUNNEL", get("TUNNEL"), ["cf-quick", "cloudflare", "none"] as const, "cf-quick"),
     cfTunnelToken: get("CF_TUNNEL_TOKEN") || "",
     publicUrl: (get("PUBLIC_URL") || "").replace(/\/+$/, ""),
+    hubUrl: (get("HUB_URL") || "").replace(/\/+$/, ""),
+    hubCode: get("HUB_CODE") || "",
+    hubSecret: get("HUB_SECRET") || "",
     port: Number(get("PORT") || 18787),
     host: get("HOST") || "127.0.0.1",
     keepAwake: (get("KEEP_AWAKE") || "true") !== "false",
